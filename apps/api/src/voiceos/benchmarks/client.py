@@ -76,14 +76,24 @@ async def converse(
     utterances: list[bytes],
     *,
     gap_s: float = 2.5,
-    tail_s: float = 6.0,
+    tail_s: float = 1.0,
+    reply_timeout_s: float = 45.0,
+    greeting_timeout_s: float = 20.0,
     origin: str | None = "http://localhost:4510",
 ) -> Result:
-    """Speak each utterance after the previous answer had time to start, then listen."""
+    """Speak each utterance, then stay on the line until the agent has finished answering.
+
+    After the last utterance the client keeps sending silence (as an open microphone would)
+    until the agent stops speaking after it, or ``reply_timeout_s`` passes, then listens for
+    ``tail_s`` more. Waiting for the answer rather than a fixed time keeps the sessions
+    complete on a slow or busy machine.
+    """
     result = Result()
     headers = {"Origin": origin} if origin else {}
     async with websockets.connect(url, additional_headers=headers, max_size=None) as ws:
         speech_ended: list[float] = []
+        answered = asyncio.Event()
+        greeted = asyncio.Event()
 
         async def receive() -> None:
             try:
@@ -104,13 +114,28 @@ async def converse(
                             result.first_audio_after_speech = now - speech_ended[-1]
                     elif which == "message":
                         with contextlib.suppress(ValueError):
-                            result.events.append(json.loads(frame.message.data))
+                            event = json.loads(frame.message.data)
+                            result.events.append(event)
+                            if event.get("type") == "bot-stopped-speaking" and not speech_ended:
+                                greeted.set()
+                            if (
+                                event.get("type") == "bot-stopped-speaking"
+                                and len(speech_ended) == len(utterances)
+                                and result.first_audio_after_speech is not None
+                            ):
+                                answered.set()
             except websockets.ConnectionClosed as exc:
                 result.closed_code = exc.code
 
         receiver = asyncio.create_task(receive())
-        await ws.send(_audio_message(silence(0.2)))
-        await asyncio.sleep(gap_s)
+        # Let the greeting finish first (as a polite caller would), so its audio is never
+        # mistaken for the answer. Agents without a greeting just wait greeting_timeout_s.
+        quiet_frame = _audio_message(silence(FRAME_MS / 1000))
+        deadline = time.monotonic() + greeting_timeout_s
+        while time.monotonic() < deadline and not greeted.is_set() and not receiver.done():
+            await ws.send(quiet_frame)
+            await asyncio.sleep(FRAME_MS / 1000)
+        await asyncio.sleep(0.3)
         step = SAMPLE_RATE * 2 * FRAME_MS // 1000
         for pcm in utterances:
             started = time.monotonic()
@@ -125,8 +150,11 @@ async def converse(
             for i in range(0, len(quiet), step):
                 await ws.send(_audio_message(quiet[i : i + step]))
                 await asyncio.sleep(FRAME_MS / 1000)
+        deadline = time.monotonic() + reply_timeout_s
+        while time.monotonic() < deadline and not answered.is_set() and not receiver.done():
+            await ws.send(quiet_frame)
+            await asyncio.sleep(FRAME_MS / 1000)
         deadline = time.monotonic() + tail_s
-        quiet_frame = _audio_message(silence(FRAME_MS / 1000))
         while time.monotonic() < deadline and not receiver.done():
             await ws.send(quiet_frame)
             await asyncio.sleep(FRAME_MS / 1000)

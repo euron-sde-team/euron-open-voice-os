@@ -75,6 +75,10 @@ class Settings(_Base):
     runtime_token_secret: str = "dev-runtime-token-secret-not-for-production"  # noqa: S105 refused in production
     internal_api_token: str = "dev-internal-api-token-not-for-production"  # noqa: S105 refused in production
 
+    # Where the demo seed points its providers, as the runtime reaches them.
+    demo_speech_url: str = "http://speech:8080/v1"
+    demo_llm_url: str = "http://mock-providers:4550/v1"
+
     default_rpm_limit: int = 120
     max_body_bytes: int = 2_000_000
     worker_poll_interval_s: float = 30.0

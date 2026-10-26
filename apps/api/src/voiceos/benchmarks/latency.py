@@ -70,7 +70,7 @@ class Conversation:
 
 async def converse_once(ws_url: str, file: Path) -> Conversation:
     """One session, one utterance: sessions stay independent of each other."""
-    result = await converse(ws_url, [load_pcm16k(file)], gap_s=4.0, tail_s=4.0)
+    result = await converse(ws_url, [load_pcm16k(file)], gap_s=1.5)
     first = result.first_audio_after_speech
     return Conversation(
         round(first * 1000, 1) if first is not None else None,

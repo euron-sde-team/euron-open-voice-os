@@ -40,6 +40,14 @@ _RULES: list[tuple[re.Pattern[str], str]] = [
         re.compile(r"\b(book|table|reservation|appointment)\b", re.I),
         "Sure. I have booked that for you. Is there anything else you need?",
     ),
+    (
+        re.compile(r"\b(open|opening|hours|close)\b", re.I),
+        "On Sunday we open at ten in the morning and close at six in the evening.",
+    ),
+    (
+        re.compile(r"\b(order|delivery|package)\b", re.I),
+        "Your order shipped yesterday and should reach you tomorrow.",
+    ),
     (re.compile(r"\b(time)\b", re.I), "I can check the time for you."),
     (
         re.compile(r"\b(weather)\b", re.I),
@@ -98,9 +106,11 @@ def _answer(
     )
     last = messages[-1] if messages else {}
     if last.get("role") == "tool":
-        return f"It is {_text(last.get('content'))}.", None
+        return f"It is {_tool_result(_text(last.get('content')))}.", None
     names = {t.get("function", {}).get("name") for t in tools or []}
-    if "get_current_time" in names and re.search(r"\btime\b", last_user, re.I):
+    if "get_current_time" in names and re.search(
+        r"\b(what time is it|the time now|current time)\b", last_user, re.I
+    ):
         return "", {"name": "get_current_time", "arguments": "{}"}
     if "end_conversation" in names and re.search(r"\b(bye|goodbye)\b", last_user, re.I):
         return "Thank you for calling. Goodbye!", None
@@ -110,6 +120,17 @@ def _answer(
     if not last_user:
         return "Hello! I am the VoiceOS demo assistant. How can I help you today?", None
     return _DEFAULT, None
+
+
+def _tool_result(content: str) -> str:
+    """A tool's JSON result read out as words: {"utc": "14:48 UTC"} -> 14:48 UTC."""
+    try:
+        value = json.loads(content)
+    except ValueError:
+        return content
+    if isinstance(value, dict):
+        return ", ".join(str(v) for v in value.values())
+    return str(value)
 
 
 def _tokens(text: str) -> int:
