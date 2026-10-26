@@ -63,6 +63,9 @@ class TurnSettings(_Model):
     allow_interruptions: bool = True
     # Words the user must say before an interruption counts (filters coughs and "uh huh").
     interruption_min_words: int = Field(1, ge=0, le=10)
+    # How long a finished turn may wait for its transcript before it is treated as empty.
+    # Raise it when speech recognition is slow (a busy CPU, a large model).
+    transcript_wait_s: float = Field(15.0, ge=1.0, le=30.0)
 
 
 class PrivacySettings(_Model):
@@ -150,6 +153,9 @@ class SessionReport(_Model):
     agent_id: str
     agent_version: int
     transport: Transport
+    # Who started it ("user:<id>" or "key:<id>") and, for browsers, from which site.
+    subject: str = ""
+    origin: str | None = None
     started_at: datetime
     ended_at: datetime
     end_reason: EndReason

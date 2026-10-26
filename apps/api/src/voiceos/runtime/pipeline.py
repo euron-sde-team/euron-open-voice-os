@@ -134,6 +134,7 @@ async def run_session(
         user_params=LLMUserAggregatorParams(
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=agent.turn.vad_stop_secs)),
             user_turn_strategies=_turn_strategies(agent),
+            user_turn_stop_timeout=agent.turn.transcript_wait_s,
         ),
     )
     router = TurnRouter(

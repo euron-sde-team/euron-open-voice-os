@@ -27,6 +27,7 @@ dependencies = [
   "opentelemetry-sdk>=1.28",
   "opentelemetry-exporter-otlp-proto-http>=1.28",
   "numpy>=2.1",
+  "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -57,6 +58,7 @@ dev = [
   "boto3-stubs[s3,kms,secretsmanager]>=1.35",
   "asgi-lifespan>=2.1",
   "websockets>=13",
+  "types-pyyaml>=6.0",
 ]
 
 [build-system]
@@ -80,6 +82,7 @@ ignore = ["S101", "B008", "RUF012", "RUF001"]
 "src/voiceos/migrations/**" = ["E501", "UP", "I"]
 "src/mockproviders/**" = ["E501", "S311"]
 "src/voiceos/demo/**" = ["E501", "S311"]
+"src/voiceos/agents/templates.py" = ["E501"]
 
 [tool.mypy]
 strict = true
@@ -90,6 +93,11 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = ["asgi_lifespan.*", "faster_whisper.*", "kokoro_onnx.*", "scipy.*", "pipecat.*", "aiortc.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Pipecat's event_handler decorator is untyped; the handlers themselves are typed.
+module = ["voiceos.runtime.pipeline"]
+disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

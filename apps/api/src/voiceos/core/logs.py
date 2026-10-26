@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 _RESERVED = set(vars(logging.makeLogRecord({})).keys()) | {"message", "asctime"}
 # Never write credentials to logs, whatever a caller puts in `extra`.
+_TOKEN_IN_URL = re.compile(r"((?:^|[?&\s])token=)[^&\s\"']+")
 _REDACT = {"authorization", "api_key", "password", "secret", "token", "x-api-key"}
 
 
@@ -22,7 +24,8 @@ class JsonFormatter(logging.Formatter):
             "ts": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "level": record.levelname.lower(),
             "logger": record.name,
-            "msg": record.getMessage(),
+            # Session tokens travel in WebSocket URLs (?token=...); never log one.
+            "msg": _TOKEN_IN_URL.sub(r"\1[redacted]", record.getMessage()),
         }
         rid = request_id_var.get()
         if rid:

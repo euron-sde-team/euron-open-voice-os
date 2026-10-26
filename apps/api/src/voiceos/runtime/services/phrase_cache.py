@@ -17,12 +17,10 @@ import threading
 from collections import OrderedDict
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
-from typing import Any, TypeVar
+from typing import Any
 
 from pipecat.frames.frames import ErrorFrame, Frame, TTSAudioRawFrame
 from pipecat.services.tts_service import TTSService
-
-T = TypeVar("T", bound=type[TTSService])
 
 # Long sentences rarely repeat; caching them only churns the cache.
 MAX_CACHED_CHARS = 200
@@ -73,7 +71,7 @@ class _Wiring:
     stats: CacheStats = field(default_factory=CacheStats)
 
 
-def cached(service_cls: T) -> T:
+def cached[S: type[TTSService]](service_cls: S) -> S:
     """A subclass of ``service_cls`` whose ``run_tts`` consults a ``PhraseCache``."""
 
     class Cached(service_cls):  # type: ignore[valid-type, misc]

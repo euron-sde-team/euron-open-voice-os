@@ -24,11 +24,11 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import numpy as np
-from fastapi import FastAPI, File, Form, Header, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
-from starlette.background import BackgroundTask
 from scipy.signal import resample_poly
+from starlette.background import BackgroundTask
 
 from voiceos import __version__
 from voiceos.core.config import SpeechSettings, get_speech_settings
@@ -107,8 +107,12 @@ def create_app(settings: SpeechSettings | None = None) -> FastAPI:
         compute_type=settings.whisper_compute_type,
         kokoro_model=settings.kokoro_model,
         kokoro_voices=settings.kokoro_voices,
+        threads=settings.speech_threads,
     )
-    slots = asyncio.Semaphore(settings.speech_concurrency)
+    # Separate limits: a transcription (on the user's critical path) never queues behind
+    # the agent's own sentences being synthesized, and the other way round.
+    stt_slots = asyncio.Semaphore(settings.speech_concurrency)
+    tts_slots = asyncio.Semaphore(settings.speech_concurrency)
     ready: dict[str, Any] = {"whisper": [], "kokoro": False}
 
     @asynccontextmanager
@@ -175,7 +179,7 @@ def create_app(settings: SpeechSettings | None = None) -> FastAPI:
     ) -> Response:
         size = whisper_size(model, settings.whisper_default)
         audio = decode_wav(await file.read(), settings.speech_max_audio_s)
-        async with slots:
+        async with stt_slots:
             result = await asyncio.to_thread(
                 models.transcribe, audio, size=size, language=language, prompt=prompt
             )
@@ -203,7 +207,7 @@ def create_app(settings: SpeechSettings | None = None) -> FastAPI:
         chunks = models.synthesize(body.input, voice=body.voice, speed=body.speed)
         # Synthesize the first sentence before answering, so a bad voice is a clean 400 and
         # the first bytes are real audio.
-        await slots.acquire()
+        await tts_slots.acquire()
         released = False
 
         def release() -> None:
@@ -212,7 +216,7 @@ def create_app(settings: SpeechSettings | None = None) -> FastAPI:
             nonlocal released
             if not released:
                 released = True
-                slots.release()
+                tts_slots.release()
 
         try:
             first = await asyncio.to_thread(next, chunks, b"")

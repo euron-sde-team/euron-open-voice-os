@@ -118,8 +118,9 @@ class TurnRecorder(BaseObserver):
         turn = self._open(greeting=True)
         turn.agent_text.append(text)
 
-    def mark_current(self, *, model: str | None = None, routed_small: bool = False,
-                     cache_hit: bool = False) -> None:
+    def mark_current(
+        self, *, model: str | None = None, routed_small: bool = False, cache_hit: bool = False
+    ) -> None:
         if self._current is not None:
             if model:
                 self._current.llm_model = model

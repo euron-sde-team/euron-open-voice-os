@@ -66,7 +66,9 @@ def whisper_size(model: str, default: str) -> str:
     if name in ("", "1", "default"):
         return default
     if name not in WHISPER_SIZES:
-        raise SpeechError(f"Unknown Whisper model {model!r}. Use one of: {', '.join(WHISPER_SIZES)}")
+        raise SpeechError(
+            f"Unknown Whisper model {model!r}. Use one of: {', '.join(WHISPER_SIZES)}"
+        )
     return name
 
 
@@ -101,7 +103,7 @@ def split_sentences(text: str, max_chars: int = 300) -> list[str]:
 
 def to_pcm16(samples: np.ndarray) -> bytes:
     clipped = np.clip(samples, -1.0, 1.0)
-    return (clipped * 32767).astype("<i2").tobytes()
+    return bytes((clipped * 32767).astype("<i2").tobytes())
 
 
 class SpeechModels:
@@ -116,6 +118,7 @@ class SpeechModels:
         compute_type: str = "int8",
         kokoro_model: str = "kokoro-v1.0.int8.onnx",
         kokoro_voices: str = "voices-v1.0.bin",
+        threads: int = 4,
     ) -> None:
         self.models_dir = models_dir
         self.whisper_default = whisper_default
@@ -123,6 +126,9 @@ class SpeechModels:
         self.compute_type = compute_type
         self.kokoro_model = kokoro_model
         self.kokoro_voices = kokoro_voices
+        # Bounded threads per model: on a shared CPU, every model claiming every core makes
+        # all of them slower (oversubscription), so each gets a fixed share.
+        self.threads = threads
         self._whisper: dict[str, Any] = {}
         self._kokoro: Any = None
         self._whisper_lock = threading.Lock()
@@ -141,6 +147,9 @@ class SpeechModels:
                     device=self.device,
                     compute_type=self.compute_type,
                     download_root=str(self.models_dir / "whisper"),
+                    cpu_threads=self.threads,
+                    # Models come from the volume `make models` filled: no network at runtime.
+                    local_files_only=True,
                 )
                 self._whisper[size] = model
                 log.info(
@@ -178,7 +187,8 @@ class SpeechModels:
     def kokoro(self) -> Any:
         with self._kokoro_lock:
             if self._kokoro is None:
-                from kokoro_onnx import EspeakConfig, Kokoro
+                from kokoro_onnx import Kokoro
+                from kokoro_onnx.config import EspeakConfig
 
                 model = self.models_dir / "kokoro" / self.kokoro_model
                 voices = self.models_dir / "kokoro" / self.kokoro_voices
@@ -189,7 +199,15 @@ class SpeechModels:
                 lib = ctypes.util.find_library("espeak-ng")
                 espeak = EspeakConfig(lib_path=lib, data_path=_espeak_data_dir())
                 started = time.perf_counter()
-                self._kokoro = Kokoro(str(model), str(voices), espeak_config=espeak)
+                import onnxruntime as ort
+
+                options = ort.SessionOptions()
+                options.intra_op_num_threads = self.threads
+                options.inter_op_num_threads = 1
+                session = ort.InferenceSession(
+                    str(model), sess_options=options, providers=["CPUExecutionProvider"]
+                )
+                self._kokoro = Kokoro.from_session(session, str(voices), espeak_config=espeak)
                 log.info("kokoro loaded", extra={"s": round(time.perf_counter() - started, 1)})
             return self._kokoro
 

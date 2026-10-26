@@ -82,5 +82,5 @@ class SpeechServerTTSService(TTSService):
             yield ErrorFrame(error=f"TTS request failed: {type(exc).__name__}")
 
     async def cleanup(self) -> None:
-        await super().cleanup()
+        await super().cleanup()  # type: ignore[no-untyped-call]
         await self._client.aclose()

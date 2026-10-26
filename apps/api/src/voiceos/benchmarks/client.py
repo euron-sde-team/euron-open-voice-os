@@ -1,4 +1,4 @@
-"""A headless voice client for tests, benchmarks and the demo seed.
+"""A headless voice client: the benchmark, the demo seed and the tests use it.
 
 It connects to the runtime's WebSocket like a browser would, streams a WAV file as
 microphone audio in real time (20 ms frames, then silence), and records what came back:
@@ -8,6 +8,7 @@ agent audio (with timestamps), RTVI events (transcripts, speaking state, errors)
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 import wave
@@ -27,13 +28,15 @@ def load_pcm16k(path: str | Path) -> bytes:
     """Mono 16 kHz PCM16 from a 16-bit WAV of any rate."""
     with wave.open(str(path)) as w:
         rate, channels = w.getframerate(), w.getnchannels()
-        data = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(np.float32)
+        data: np.ndarray[Any, Any] = np.frombuffer(
+            w.readframes(w.getnframes()), dtype="<i2"
+        ).astype(np.float32)
     if channels > 1:
         data = data.reshape(-1, channels).mean(axis=1)
     if rate != SAMPLE_RATE:
         n = int(len(data) * SAMPLE_RATE / rate)
         data = np.interp(np.linspace(0, len(data) - 1, n), np.arange(len(data)), data)
-    return np.clip(data, -32768, 32767).astype("<i2").tobytes()
+    return bytes(np.clip(data, -32768, 32767).astype("<i2").tobytes())
 
 
 def silence(seconds: float) -> bytes:
@@ -61,11 +64,11 @@ class Result:
 
 
 def _audio_message(pcm: bytes) -> bytes:
-    frame = frames_pb2.Frame()
+    frame = frames_pb2.Frame()  # type: ignore[attr-defined]  # generated protobuf module
     frame.audio.audio = pcm
     frame.audio.sample_rate = SAMPLE_RATE
     frame.audio.num_channels = 1
-    return frame.SerializeToString()
+    return bytes(frame.SerializeToString())
 
 
 async def converse(
@@ -87,19 +90,21 @@ async def converse(
                 async for raw in ws:
                     if isinstance(raw, str):
                         continue
-                    frame = frames_pb2.Frame()
+                    frame = frames_pb2.Frame()  # type: ignore[attr-defined]
                     frame.ParseFromString(raw)
                     which = frame.WhichOneof("frame")
                     now = time.monotonic()
                     if which == "audio":
                         result.audio_frames.append((now, len(frame.audio.audio)))
-                        if speech_ended and result.first_audio_after_speech is None and now > speech_ended[-1]:
+                        if (
+                            speech_ended
+                            and result.first_audio_after_speech is None
+                            and now > speech_ended[-1]
+                        ):
                             result.first_audio_after_speech = now - speech_ended[-1]
                     elif which == "message":
-                        try:
+                        with contextlib.suppress(ValueError):
                             result.events.append(json.loads(frame.message.data))
-                        except ValueError:
-                            pass
             except websockets.ConnectionClosed as exc:
                 result.closed_code = exc.code
 
@@ -112,7 +117,9 @@ async def converse(
             for i in range(0, len(pcm), step):
                 await ws.send(_audio_message(pcm[i : i + step]))
                 # Real time: the runtime's VAD and turn detection see natural pacing.
-                await asyncio.sleep(max(0.0, started + (i + step) / (SAMPLE_RATE * 2) - time.monotonic()))
+                await asyncio.sleep(
+                    max(0.0, started + (i + step) / (SAMPLE_RATE * 2) - time.monotonic())
+                )
             speech_ended.append(time.monotonic())
             quiet = silence(gap_s)
             for i in range(0, len(quiet), step):

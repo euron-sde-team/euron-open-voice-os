@@ -33,7 +33,9 @@ class ControlPlane(Protocol):
 
 
 class HttpControlPlane:
-    def __init__(self, base_url: str, token: str, *, ttl_s: float = 5.0, timeout_s: float = 10.0) -> None:
+    def __init__(
+        self, base_url: str, token: str, *, ttl_s: float = 5.0, timeout_s: float = 10.0
+    ) -> None:
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             headers={"authorization": f"Bearer {token}"},
@@ -64,7 +66,11 @@ class HttpControlPlane:
             except httpx.HTTPError as exc:
                 log.warning(
                     "session report failed",
-                    extra={"session_id": report.session_id, "attempt": attempt + 1, "error": type(exc).__name__},
+                    extra={
+                        "session_id": report.session_id,
+                        "attempt": attempt + 1,
+                        "error": type(exc).__name__,
+                    },
                 )
                 await asyncio.sleep(0.5 * 2**attempt)
         log.error("session report dropped", extra={"session_id": report.session_id})
@@ -94,7 +100,9 @@ class StaticAgents:
             extra={
                 "session_id": report.session_id,
                 "end": report.end_reason,
-                "turns": [t.model_dump(exclude={"started_at"}, exclude_none=True) for t in report.turns],
+                "turns": [
+                    t.model_dump(exclude={"started_at"}, exclude_none=True) for t in report.turns
+                ],
                 "usage": report.usage.model_dump(),
             },
         )

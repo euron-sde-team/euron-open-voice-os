@@ -38,8 +38,10 @@ def faq_search(snippets: list[str], query: str, limit: int = 2) -> list[str]:
 Handler = Callable[[FunctionCallParams], Awaitable[None]]
 
 
-def build_tools(agent: ResolvedAgent, *, on_end: Callable[[], None]) -> list[FunctionSchema]:
-    tools: list[FunctionSchema] = []
+def build_tools(
+    agent: ResolvedAgent, *, on_end: Callable[[], None]
+) -> list[FunctionSchema | Callable[..., Awaitable[Any]]]:
+    tools: list[FunctionSchema | Callable[..., Awaitable[Any]]] = []
     for spec in agent.tools:
         tools.append(_tool(spec, agent, on_end))
     return tools

@@ -35,6 +35,103 @@ class _Base(BaseSettings):
     log_level: str = "INFO"
 
 
+class Settings(_Base):
+    """The control plane: API, worker and CLI."""
+
+    cloud: Literal["local", "floci", "aws"] = Field("local", alias="VOICEOS_CLOUD")
+
+    database_url: str = "postgresql+asyncpg://voiceos:voiceos@localhost:4542/voiceos"
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    # Empty: no Redis. Caches, rate limits and config invalidation then run in process.
+    redis_url: str = ""
+    memory_cache_max_bytes: int = Field(64_000_000, ge=1_000_000)
+
+    session_secret: str = "dev-session-secret-not-for-production"  # noqa: S105 dev default, refused in production by guard()
+    api_key_pepper: str = "dev-api-key-pepper-not-for-production"
+    session_ttl_hours: int = 12
+    cookie_secure: bool = False
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:4510"]
+    )
+
+    # Provider API keys are sealed before they reach the database.
+    key_mode: Literal["local", "kms"] = "local"
+    local_master_key: str = "dev-local-master-key-not-for-production"
+    kms_key_id: str = "alias/voiceos-local"
+
+    aws_region: str = "us-east-1"
+    aws_endpoint_url: str | None = None
+    s3_force_path_style: bool = False
+    # Opt-in session audio and benchmark reports. Rows keep only the object key.
+    objects_bucket: str = "voiceos-local-objects"
+    storage: Literal["local", "s3"] = "local"
+    local_storage_dir: str = "./.data/objects"
+
+    # The voice runtime: where browsers connect, and the secrets shared with it.
+    runtime_public_url: str = "http://localhost:4535"
+    # How the worker reaches the runtime on the private network (benchmarks, demo traffic).
+    runtime_internal_url: str = "http://localhost:4535"
+    runtime_token_secret: str = "dev-runtime-token-secret-not-for-production"  # noqa: S105 refused in production
+    internal_api_token: str = "dev-internal-api-token-not-for-production"  # noqa: S105 refused in production
+
+    default_rpm_limit: int = 120
+    max_body_bytes: int = 2_000_000
+    worker_poll_interval_s: float = 30.0
+    worker_metrics_port: int = Field(9464, ge=0, le=65535)
+    otel_enabled: bool = False
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, v: object) -> object:
+        return _split(v)
+
+    @property
+    def cache_backend(self) -> Literal["redis", "memory"]:
+        return "redis" if self.redis_url else "memory"
+
+    def guard(self) -> None:
+        """Refuse to boot in production with demo secrets or unsafe options."""
+        if self.environment != "production":
+            return
+        problems: list[str] = [
+            f"{name.upper()} must be a random value of at least 32 chars"
+            for name in (
+                "session_secret",
+                "api_key_pepper",
+                "runtime_token_secret",
+                "internal_api_token",
+            )
+            if _insecure(getattr(self, name))
+        ]
+        if self.key_mode == "local" and _insecure(self.local_master_key):
+            problems.append("LOCAL_MASTER_KEY must be set (or use KEY_MODE=kms)")
+        secrets = [
+            self.session_secret,
+            self.api_key_pepper,
+            self.runtime_token_secret,
+            self.internal_api_token,
+        ]
+        if len(set(secrets)) != len(secrets):
+            problems.append(
+                "SESSION_SECRET, API_KEY_PEPPER, RUNTIME_TOKEN_SECRET and INTERNAL_API_TOKEN "
+                "must all differ"
+            )
+        if self.cloud == "aws" and self.aws_endpoint_url:
+            problems.append("AWS_ENDPOINT_URL must be unset when VOICEOS_CLOUD=aws")
+        if not self.cookie_secure:
+            problems.append("COOKIE_SECURE must be true in production")
+        if problems:
+            raise RuntimeError("unsafe production configuration: " + "; ".join(problems))
+
+
+@lru_cache
+def get_settings() -> Settings:
+    settings = Settings()
+    settings.guard()
+    return settings
+
+
 class SpeechSettings(_Base):
     """The local speech server (Whisper and Kokoro behind OpenAI-compatible endpoints)."""
 
@@ -48,6 +145,9 @@ class SpeechSettings(_Base):
     kokoro_preload: bool = True
     # Concurrent model calls; each one uses several cores already.
     speech_concurrency: int = Field(2, ge=1, le=32)
+    # CPU threads each model call may use. Keep threads x concurrency within the cores
+    # the container really gets; oversubscribing makes every call slower.
+    speech_threads: int = Field(4, ge=1, le=64)
     speech_max_audio_s: float = Field(60.0, gt=0)
     speech_max_chars: int = Field(4000, ge=1)
     # Optional shared secret: when set, every request must send it as a Bearer token.
@@ -65,8 +165,8 @@ class RuntimeSettings(_Base):
     control_plane_url: str = "http://localhost:4530"
     # Shared with the control plane: signs session tokens (browser -> runtime) and
     # authenticates the runtime's internal calls (runtime -> control plane).
-    runtime_token_secret: str = "dev-runtime-token-secret-not-for-production"
-    internal_api_token: str = "dev-internal-api-token-not-for-production"
+    runtime_token_secret: str = "dev-runtime-token-secret-not-for-production"  # noqa: S105 refused in production
+    internal_api_token: str = "dev-internal-api-token-not-for-production"  # noqa: S105 refused in production
     max_sessions: int = Field(8, ge=1, le=1000, description="Concurrent sessions per instance")
     allowed_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:4510"]

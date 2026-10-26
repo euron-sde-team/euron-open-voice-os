@@ -36,13 +36,25 @@ TTS_RATE = 24_000
 
 # Specific intents first, greetings last, so "hello, I would like to book" books.
 _RULES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\b(book|table|reservation|appointment)\b", re.I), "Sure. I have booked that for you. Is there anything else you need?"),
+    (
+        re.compile(r"\b(book|table|reservation|appointment)\b", re.I),
+        "Sure. I have booked that for you. Is there anything else you need?",
+    ),
     (re.compile(r"\b(time)\b", re.I), "I can check the time for you."),
-    (re.compile(r"\b(weather)\b", re.I), "I cannot see the weather from here, but I hope it is pleasant."),
-    (re.compile(r"\b(story|long)\b", re.I), " ".join(["This is a long answer that keeps going so you can interrupt it."] * 6)),
+    (
+        re.compile(r"\b(weather)\b", re.I),
+        "I cannot see the weather from here, but I hope it is pleasant.",
+    ),
+    (
+        re.compile(r"\b(story|long)\b", re.I),
+        " ".join(["This is a long answer that keeps going so you can interrupt it."] * 6),
+    ),
     (re.compile(r"\b(bye|goodbye|thanks|thank you)\b", re.I), "Thank you for calling. Goodbye!"),
     (re.compile("[\\u0900-\\u097f]"), "नमस्ते! मैं आपकी कैसे मदद कर सकती हूँ?"),  # Devanagari
-    (re.compile(r"\b(hello|hi|hey|namaste)\b", re.I), "Hello! I am the VoiceOS demo assistant. How can I help you today?"),
+    (
+        re.compile(r"\b(hello|hi|hey|namaste)\b", re.I),
+        "Hello! I am the VoiceOS demo assistant. How can I help you today?",
+    ),
 ]
 _DEFAULT = "I heard you. This is a demo reply from the mock language model."
 
@@ -78,8 +90,12 @@ def _text(content: Any) -> str:
     return ""
 
 
-def _answer(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None) -> tuple[str, dict[str, Any] | None]:
-    last_user = next((_text(m.get("content")) for m in reversed(messages) if m.get("role") == "user"), "")
+def _answer(
+    messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None
+) -> tuple[str, dict[str, Any] | None]:
+    last_user = next(
+        (_text(m.get("content")) for m in reversed(messages) if m.get("role") == "user"), ""
+    )
     last = messages[-1] if messages else {}
     if last.get("role") == "tool":
         return f"It is {_text(last.get('content'))}.", None
@@ -126,7 +142,13 @@ async def chat(request: Request) -> Response:
                 "object": "chat.completion",
                 "created": created,
                 "model": model,
-                "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if call else "stop"}],
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": message,
+                        "finish_reason": "tool_calls" if call else "stop",
+                    }
+                ],
                 "usage": usage,
             }
         )
@@ -145,7 +167,9 @@ async def chat(request: Request) -> Response:
         yield chunk({"role": "assistant", "content": ""})
         slow = _faults.get("llm_stream", {}).get("delay_per_word_s", 0.0)
         if call:
-            yield chunk({"tool_calls": [{"index": 0, "id": "call_1", "type": "function", "function": call}]})
+            yield chunk(
+                {"tool_calls": [{"index": 0, "id": "call_1", "type": "function", "function": call}]}
+            )
             yield chunk({}, "tool_calls")
         else:
             for i, word in enumerate(reply.split(" ")):

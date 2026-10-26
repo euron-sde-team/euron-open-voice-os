@@ -26,7 +26,9 @@ class SessionClaims:
     subject: str  # "user:<id>" or "key:<id>", for the audit trail
 
 
-def issue(agent_id: str, secret: str, *, subject: str, origin: str | None = None) -> tuple[str, SessionClaims]:
+def issue(
+    agent_id: str, secret: str, *, subject: str, origin: str | None = None
+) -> tuple[str, SessionClaims]:
     claims = SessionClaims(str(uuid.uuid4()), agent_id, origin, subject)
     now = datetime.now(UTC)
     token = jwt.encode(
@@ -48,6 +50,8 @@ def issue(agent_id: str, secret: str, *, subject: str, origin: str | None = None
 def verify(token: str, secret: str) -> SessionClaims | None:
     try:
         data = jwt.decode(token, secret, algorithms=["HS256"], audience=AUDIENCE)
-        return SessionClaims(str(data["sid"]), str(data["agent"]), data.get("origin"), str(data["sub"]))
+        return SessionClaims(
+            str(data["sid"]), str(data["agent"]), data.get("origin"), str(data["sub"])
+        )
     except (jwt.PyJWTError, KeyError):
         return None

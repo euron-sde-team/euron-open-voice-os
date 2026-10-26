@@ -91,7 +91,7 @@ def build_stt(p: ProviderConfig, agent_language: str) -> STTService:
 
 
 # ── LLM ──────────────────────────────────────────────────────────────────────────────
-def build_llm(p: ProviderConfig, system_prompt: str) -> LLMService:
+def build_llm(p: ProviderConfig, system_prompt: str) -> LLMService[Any]:
     match p.adapter:
         case "openai_compatible" | "mock":
             from pipecat.services.openai.llm import OpenAILLMService
@@ -125,6 +125,9 @@ def build_tts(
 ) -> TTSService:
     namespace = f"{p.provider_id}:{p.adapter}:{p.model}:{p.voice}"
     extra: dict[str, Any] = {"phrase_cache": wiring(cache, namespace)} if cache else {}
+    # How long to wait for a synthesis to produce audio before calling it failed. Local
+    # models on a busy CPU can need more than Pipecat's 3 s default for a first sentence.
+    extra["stop_frame_timeout_s"] = max(3.0, min(p.timeout_s, 10.0))
 
     def cls(service: type[TTSService]) -> type[TTSService]:
         return cached(service) if cache else service
