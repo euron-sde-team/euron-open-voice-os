@@ -1,0 +1,113 @@
+[project]
+name = "voiceos"
+version = "0.1.0"
+description = "Euron Open VoiceOS: a self-hosted real-time voice agent platform with local speech models, provider switching per agent, and measured latency and cost per conversation."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12,<3.14"
+# The control plane (api, worker) needs only these. The voice runtime and the local speech
+# server add their own extras, so each container installs just what it runs.
+dependencies = [
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "orjson>=3.10",
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.32",
+  "httpx>=0.28",
+  "pyjwt>=2.10",
+  "sqlalchemy[asyncio]>=2.1",
+  "asyncpg>=0.30",
+  "alembic>=1.14",
+  "redis>=5.2",
+  "argon2-cffi>=23.1",
+  "boto3>=1.35",
+  "cryptography>=43",
+  "prometheus-client>=0.21",
+  "opentelemetry-api>=1.28",
+  "opentelemetry-sdk>=1.28",
+  "opentelemetry-exporter-otlp-proto-http>=1.28",
+  "numpy>=2.1",
+]
+
+[project.optional-dependencies]
+# Voice runtime: Pipecat pipelines, WebRTC (aiortc) and WebSocket transports, Silero VAD,
+# Smart Turn, and the cloud provider SDKs Pipecat wraps.
+runtime = [
+  "pipecat-ai[webrtc,websocket,openai,deepgram,sarvam,anthropic]==1.14.0",
+]
+# Local speech models served over OpenAI-compatible endpoints. Kokoro needs the system
+# espeak-ng (GPL-3.0), installed only in the speech container image, never imported here.
+speech = [
+  "faster-whisper==1.2.1",
+  "kokoro-onnx==0.6.1",
+  "scipy>=1.14",
+  "python-multipart>=0.0.20",
+]
+
+[project.scripts]
+voiceos = "voiceos.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=6.0",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "boto3-stubs[s3,kms,secretsmanager]>=1.35",
+  "asgi-lifespan>=2.1",
+  "websockets>=13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/voiceos", "src/mockproviders"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "S", "A", "C4", "SIM", "RUF", "ASYNC", "PT"]
+ignore = ["S101", "B008", "RUF012", "RUF001"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S311", "E501", "PT018", "PT022", "PT011", "S110"]
+"src/voiceos/migrations/**" = ["E501", "UP", "I"]
+"src/mockproviders/**" = ["E501", "S311"]
+"src/voiceos/demo/**" = ["E501", "S311"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["asgi_lifespan.*", "faster_whisper.*", "kokoro_onnx.*", "scipy.*", "pipecat.*", "aiortc.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+markers = [
+  "integration: needs Postgres, Redis, Floci and the mock providers (make test-integration)",
+  "speech: needs the local speech models (make models)",
+]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["voiceos"]
+branch = true
+concurrency = ["greenlet", "thread"]
+omit = ["*/migrations/*", "*/demo/*"]
+
+[tool.coverage.report]
+skip_empty = true
+show_missing = true
