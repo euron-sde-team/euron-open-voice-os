@@ -16,12 +16,14 @@ curl -X POST ${apiBase(origin)}/v1/sessions \\
 
 export function browserSnippet(): string {
   return `import { PipecatClient } from "@pipecat-ai/client-js";
-import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
+import { SmallWebRTCTransport, WavMediaManager } from "@pipecat-ai/small-webrtc-transport";
 
 // ticket = what your backend got from POST /v1/sessions (show ticket.disclosure.message first)
 const { iceServers } = await (await fetch(ticket.ice_url)).json();
 const client = new PipecatClient({
-  transport: new SmallWebRTCTransport({ iceServers }),
+  // WavMediaManager keeps the microphone local (the default one loads code from a CDN);
+  // waitForICEGathering sends every candidate in the offer, one request per call.
+  transport: new SmallWebRTCTransport({ iceServers, mediaManager: new WavMediaManager(), waitForICEGathering: true }),
   enableMic: true,
   enableCam: false,
   callbacks: {
@@ -34,10 +36,14 @@ await client.connect({ webrtcRequestParams: { endpoint: ticket.offer_url } });`;
 
 export function websocketSnippet(): string {
   return `import { PipecatClient } from "@pipecat-ai/client-js";
-import { WebSocketTransport } from "@pipecat-ai/websocket-transport";
+import { WavMediaManager, WebSocketTransport } from "@pipecat-ai/websocket-transport";
 
 // No UDP path (strict firewall)? The same ticket works over a WebSocket.
-const client = new PipecatClient({ transport: new WebSocketTransport(), enableMic: true, enableCam: false });
+const client = new PipecatClient({
+  transport: new WebSocketTransport({ mediaManager: new WavMediaManager() }),
+  enableMic: true,
+  enableCam: false,
+});
 await client.connect({ wsUrl: ticket.websocket_url });`;
 }
 

@@ -1,0 +1,49 @@
+name: docker
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # One Dockerfile, three targets: the control plane, the voice runtime and the
+          # local speech server (Whisper and Kokoro, with espeak-ng).
+          - image: api
+            context: apps/api
+            file: server
+            target: api
+          - image: runtime
+            context: apps/api
+            file: server
+            target: runtime
+          - image: speech
+            context: apps/api
+            file: server
+            target: speech
+          - image: web
+            context: apps/web
+            file: web
+            target: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: infra/docker/${{ matrix.file }}.Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: voiceos-${{ matrix.image }}:ci
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

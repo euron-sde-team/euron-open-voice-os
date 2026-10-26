@@ -71,7 +71,7 @@ typecheck: ## Typecheck the API (mypy --strict) and the web app (tsc)
 	$(WEB) pnpm typecheck
 
 test: ## Unit tests: API (pytest) and web (vitest). No database, no network
-	$(API) uv run pytest tests/unit -q
+	$(API) uv run --extra runtime --extra speech pytest tests/unit -q
 	$(WEB) pnpm test
 
 migration: ## Autogenerate an Alembic revision from the models: make migration MSG="add x" (local Postgres)
@@ -82,7 +82,7 @@ migration: ## Autogenerate an Alembic revision from the models: make migration M
 
 test-integration: ## API and runtime integration tests against real Postgres and Redis (started if needed)
 	@scripts/test-db.sh
-	$(API) uv run pytest tests/integration -q --cov --cov-report=term-missing:skip-covered
+	$(API) uv run --extra runtime --extra speech pytest tests -q --cov --cov-report=term-missing:skip-covered --cov-fail-under=85
 
 test-matrix: ## Integration tests under every cache, key and storage backend (no Redis, Floci KMS and S3)
 	@scripts/test-matrix.sh

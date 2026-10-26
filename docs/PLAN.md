@@ -113,7 +113,7 @@ stack (TokenShield budgets, SmartRouter `model=auto`, ContextForge for long conv
 Free-form visual node graph editor; telephony (Twilio, SIP); knowledge bases beyond agent
 snippets; local Marathi TTS (IndicF5 needs a GPU and gated weights); Piper as an optional
 separate service (GPL-3.0, never linked into VoiceOS); voice cloning; mobile SDKs; multi-
-tenant organisations; Kubernetes.
+tenant organisations; Kubernetes; opt-in session recording to object storage.
 
 ## Design
 
@@ -124,7 +124,7 @@ tenant organisations; Kubernetes.
 | `web` | Next.js dashboard and Talk page | 4510 |
 | `api` | Control plane: auth, agents, providers, sessions, usage, analytics, session tokens | 4530 |
 | `runtime` | Voice runtime: WebRTC offer/answer, WebSocket audio, Pipecat pipelines | 4535 |
-| `speech` | Local speech models behind OpenAI-compatible endpoints: `/v1/audio/transcriptions` (faster-whisper) and streamed `/v1/audio/speech` (Kokoro). Its own container because Kokoro needs espeak-ng (GPL-3.0), kept out of the MIT code, and so models can scale or move to a GPU on their own | 4537 |
+| `speech` | Local speech models behind OpenAI-compatible endpoints: `/v1/audio/transcriptions` (faster-whisper) and streamed `/v1/audio/speech` (Kokoro). Its own container because Kokoro loads phonemizer and espeak-ng (GPL-3.0) in process, which therefore live in this image only, and so models can scale or move to a GPU on their own | 4537 |
 | `worker` | Retention purge, rollups, benchmark runs | n/a |
 | `mock-providers` | OpenAI-compatible LLM, STT and TTS stand-ins with failure injection | 4550 |
 | `turn` | coturn, so WebRTC works from Docker Desktop | 4578 (+ small relay range inside 4581 to 4589) |

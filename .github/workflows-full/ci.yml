@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanitize:
+    name: sanitization and OpenAPI drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-sanitization.sh
+      - uses: astral-sh/setup-uv@v6
+      - name: OpenAPI reference matches the app
+        working-directory: apps/api
+        run: uv sync --frozen --extra runtime && uv run pytest tests/unit/system/test_openapi_drift.py -q
+
+  integration:
+    name: integration tests (Postgres 16, Redis 7, real voice runtime)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16.10-alpine
+        env:
+          POSTGRES_USER: voiceos
+          POSTGRES_PASSWORD: voiceos
+          POSTGRES_DB: voiceos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U voiceos"
+          --health-interval 3s --health-timeout 3s --health-retries 30
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 3s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://voiceos:voiceos@localhost:5432/voiceos_test
+      TEST_REDIS_URL: redis://localhost:6379/15
+      TEST_CACHE: redis
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      # The runtime extra: the integration suite runs the real voice runtime (Pipecat,
+      # aiortc, Silero VAD) in-process against the mock speech and LLM providers.
+      - run: uv python install 3.12 && uv sync --frozen --extra runtime
+      - run: uv run pytest tests -q --cov --cov-report=term-missing:skip-covered --cov-fail-under=85

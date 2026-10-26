@@ -27,7 +27,7 @@ for cache in redis memory; do
       echo
       echo "== cache=$cache keys=$keys storage=$storage"
       if ! (cd "$ROOT/apps/api" && TEST_CACHE=$cache TEST_KEY_MODE=$keys TEST_STORAGE=$storage \
-            uv run pytest tests/integration -q -p no:warnings); then
+            uv run --extra runtime --extra speech pytest tests/integration -q -p no:warnings); then
         failed+=("cache=$cache keys=$keys storage=$storage")
       fi
     done
