@@ -41,3 +41,22 @@ export function watchConsole(page: Page): string[] {
   page.on("pageerror", (e) => errors.push(e.message));
   return errors;
 }
+
+/** Talk to the agent on the Talk page until it has answered, then hang up. */
+export async function talkOnce(page: Page, agentId: string, transport: "WebRTC" | "WebSocket" = "WebSocket"): Promise<void> {
+  await page.goto(`/talk?agent=${agentId}`);
+  await page.getByRole("radio", { name: transport }).click();
+  await page.getByRole("button", { name: "Start talking" }).click();
+  const transcript = page.getByTestId("transcript");
+  await expect(transcript.locator('[data-who="user"]').first()).toContainText(/\w/, { timeout: 45_000 });
+  await expect(transcript.locator('[data-who="agent"]', { hasText: /answered in/ }).first()).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "End conversation" }).click();
+  await expect(page.getByTestId("phase")).toHaveText(/ended/i);
+}
+
+/** Create an agent from a template through the API (setup for journeys about other screens). */
+export async function agentFromTemplate(page: Page, template: string, name: string): Promise<string> {
+  const resp = await page.request.post("/api/v1/agents/from-template", { data: { template, name }, headers: CSRF });
+  expect(resp.status(), await resp.text()).toBe(201);
+  return ((await resp.json()) as { id: string }).id;
+}

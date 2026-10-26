@@ -145,7 +145,13 @@ export function useVoiceSession(getTicket: () => Promise<SessionTicket>) {
       if (kind === "webrtc") {
         const ice = await fetch(ticket.ice_url).then((r) => (r.ok ? r.json() : { iceServers: [] }));
         const c = new PipecatClient({
-          transport: new SmallWebRTCTransport({ iceServers: ice.iceServers ?? [], mediaManager: new WavMediaManager() }),
+          // All candidates go in the offer, so no follow-up PATCH has to find the same
+          // runtime task behind a load balancer.
+          transport: new SmallWebRTCTransport({
+            iceServers: ice.iceServers ?? [],
+            mediaManager: new WavMediaManager(),
+            waitForICEGathering: true,
+          }),
           enableMic: true,
           enableCam: false,
           callbacks,
