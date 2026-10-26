@@ -49,7 +49,7 @@ class Limiter:
         window = int(now // self.WINDOW_S)
         frac = (now % self.WINDOW_S) / self.WINDOW_S
         retry = math.ceil(self.WINDOW_S - (now % self.WINDOW_S))
-        return [f"cf:rl:{name}:{window}", f"cf:rl:{name}:{window - 1}"], frac, retry
+        return [f"vos:rl:{name}:{window}", f"vos:rl:{name}:{window - 1}"], frac, retry
 
     async def hit(self, name: str, limit: int, amount: int = 1) -> LimitDecision:
         now = time.time()

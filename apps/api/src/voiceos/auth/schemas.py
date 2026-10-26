@@ -23,7 +23,7 @@ class UserOut(ApiModel):
     created_at: datetime
 
 
-class SessionOut(ApiModel):
+class SignInOut(ApiModel):
     user: UserOut
     session_token: str = Field(description="Bearer token for API clients; browsers use the cookie")
     expires_in_s: int

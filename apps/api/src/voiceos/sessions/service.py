@@ -138,7 +138,17 @@ async def ingest(session: AsyncSession, container: Container, report: SessionRep
         interruptions=sum(1 for t in report.turns if t.interrupted),
         response_ms_p50=_p50(responses),
         response_ms_max=max(responses) if responses else None,
-        usage=report.usage.model_dump(),
+        usage={
+            **report.usage.model_dump(),
+            # Which stages ran on your own servers, so a zero cost reads as self-hosted.
+            "self_hosted_stages": [
+                stage
+                for stage, p in (("stt", agent.stt), ("llm", agent.llm), ("tts", agent.tts))
+                if p.self_hosted
+            ]
+            if agent
+            else [],
+        },
         cost_stt_nusd=cost.stt,
         cost_llm_nusd=cost.llm,
         cost_tts_nusd=cost.tts,
@@ -307,6 +317,7 @@ async def detail(session: AsyncSession, session_id: uuid.UUID) -> SessionDetail:
     return SessionDetail(
         **to_out(row).model_dump(),
         usage=dict(row.usage or {}),
+        self_hosted_stages=[str(x) for x in (row.usage or {}).get("self_hosted_stages", [])],
         cost_stt_usd=_usd(row.cost_stt_nusd),
         cost_llm_usd=_usd(row.cost_llm_nusd),
         cost_tts_usd=_usd(row.cost_tts_nusd),

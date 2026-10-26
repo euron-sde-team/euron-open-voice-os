@@ -1,7 +1,7 @@
 """In-process TTL cache with cluster-wide invalidation through a version stamp.
 
 Hot paths (SDK key lookup, resolved agents) read configuration on every request.
-Each process keeps a short-lived copy; any admin write bumps ``cf:cfg:version`` in the KV
+Each process keeps a short-lived copy; any admin write bumps ``vos:cfg:version`` in the KV
 store, and every process compares its stamp at most once per ``check_interval`` and drops
 its copy when the stamp moved. With the memory backend the stamp is per process, which is
 exact for a single replica.
@@ -22,7 +22,7 @@ from voiceos.core.kv import KV
 T = TypeVar("T")
 # Keys come from request data (key prefixes, agent ids), so the cache is bounded.
 MAX_ENTRIES = 10_000
-VERSION_KEY = "cf:cfg:version"
+VERSION_KEY = "vos:cfg:version"
 log = logging.getLogger("voiceos.cache")
 
 

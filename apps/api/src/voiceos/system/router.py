@@ -51,7 +51,7 @@ async def readyz(container: ContainerDep, response: Response) -> dict[str, Any]:
     if container.kv.backend == "redis":
         probes.append(_probe("redis", container.kv.ping()))
     checks = dict(await asyncio.gather(*probes))
-    # Redis is optional: when it is down the service still optimizes, so only Postgres
+    # Redis is optional: when it is down the service still works, so only Postgres
     # decides readiness. A Redis failure is reported as degraded but stays ready.
     ok = checks["postgres"]["ok"]
     response.status_code = 200 if ok else 503
@@ -64,6 +64,16 @@ async def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+class RuntimeProbe(ApiModel):
+    """The voice runtime as the API sees it on the private network."""
+
+    ok: bool
+    status: str | None = None
+    sessions: int | None = None
+    capacity: int | None = None
+    error: str | None = None
+
+
 class SystemInfo(ApiModel):
     version: str
     environment: str
@@ -72,7 +82,7 @@ class SystemInfo(ApiModel):
     storage: str
     cache_backend: str
     runtime_url: str
-    runtime: dict[str, Any]
+    runtime: RuntimeProbe
     providers: dict[str, int]
     external_providers: int
     agents: int
@@ -95,12 +105,17 @@ async def system(_: Viewer, session: SessionDep, container: ContainerDep) -> Sys
     checks: dict[str, Any] = {"postgres": {"ok": True}}
     if container.kv.backend == "redis":
         checks.update(dict([await _probe("redis", container.kv.ping())]))
-    runtime: dict[str, Any]
     try:
-        resp = await container.http.get(f"{s.runtime_public_url.rstrip('/')}/readyz", timeout=2.0)
-        runtime = {"ok": resp.status_code in (200, 503), **resp.json()}
+        resp = await container.http.get(f"{s.runtime_internal_url.rstrip('/')}/readyz", timeout=2.0)
+        body = resp.json()
+        runtime = RuntimeProbe(
+            ok=resp.status_code in (200, 503),
+            status=body.get("status"),
+            sessions=body.get("sessions"),
+            capacity=body.get("capacity"),
+        )
     except Exception as exc:
-        runtime = {"ok": False, "error": type(exc).__name__}
+        runtime = RuntimeProbe(ok=False, error=type(exc).__name__)
     return SystemInfo(
         version=__version__,
         environment=s.environment,

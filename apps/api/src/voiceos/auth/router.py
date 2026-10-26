@@ -6,7 +6,7 @@ from redis.exceptions import RedisError
 from voiceos.audit.service import Actor, audit
 from voiceos.auth import service
 from voiceos.auth.dependencies import SESSION_COOKIE, CurrentUser, revoke, session_token
-from voiceos.auth.schemas import LoginRequest, PasswordChange, SessionOut, UserOut
+from voiceos.auth.schemas import LoginRequest, PasswordChange, SignInOut, UserOut
 from voiceos.core.deps import ContainerDep, SessionDep, client_ip
 from voiceos.core.errors import RateLimitedError
 from voiceos.core.schemas import Ack
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 LOGIN_RPM_PER_IP = 20
 
 
-def _session(response: Response, container: ContainerDep, user: User) -> SessionOut:
+def _session(response: Response, container: ContainerDep, user: User) -> SignInOut:
     settings = container.settings
     token = issue_session(
         user.id,
@@ -37,17 +37,17 @@ def _session(response: Response, container: ContainerDep, user: User) -> Session
         secure=settings.cookie_secure,
         path="/",
     )
-    return SessionOut(user=UserOut.model_validate(user), session_token=token, expires_in_s=ttl)
+    return SignInOut(user=UserOut.model_validate(user), session_token=token, expires_in_s=ttl)
 
 
-@router.post("/login", response_model=SessionOut, summary="Sign in to the dashboard")
+@router.post("/login", response_model=SignInOut, summary="Sign in to the dashboard")
 async def login(
     body: LoginRequest,
     request: Request,
     response: Response,
     container: ContainerDep,
     session: SessionDep,
-) -> SessionOut:
+) -> SignInOut:
     ip = client_ip(request)
     try:
         decision = await container.kv.hit(f"login:{ip}", LOGIN_RPM_PER_IP)
@@ -88,7 +88,7 @@ async def me(user: CurrentUser) -> User:
     return user
 
 
-@router.post("/password", response_model=SessionOut, summary="Change your password")
+@router.post("/password", response_model=SignInOut, summary="Change your password")
 async def password(
     body: PasswordChange,
     request: Request,
@@ -96,7 +96,7 @@ async def password(
     user: CurrentUser,
     container: ContainerDep,
     session: SessionDep,
-) -> SessionOut:
+) -> SignInOut:
     actor: Actor = request.state.actor
     user = await service.change_password(
         session, user, body.current_password, body.new_password, actor

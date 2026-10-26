@@ -23,7 +23,7 @@ from voiceos.core.errors import AuthenticationError, PermissionDeniedError
 from voiceos.core.security import SessionClaims, decode_session
 from voiceos.users.models import User
 
-SESSION_COOKIE = "cf_session"
+SESSION_COOKIE = "vos_session"
 CSRF_HEADER = "x-voiceos-csrf"
 ROLE_RANK = {"viewer": 0, "admin": 1, "owner": 2}
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}

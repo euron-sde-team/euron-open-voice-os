@@ -270,6 +270,8 @@ services:
       # Server-side only: Next rewrites /api/* and /v1/* to the API on the Compose
       # network, so the browser talks to one origin (no CORS, first-party cookies).
       API_INTERNAL_URL: http://api:8080
+      # The browser connects to the runtime directly; the CSP allows exactly this origin.
+      RUNTIME_PUBLIC_URL: http://localhost:${VOS_RUNTIME_PORT:-4535}
       PORT: "8080"
     ports:
       - "127.0.0.1:${VOS_WEB_PORT:-4510}:8080"

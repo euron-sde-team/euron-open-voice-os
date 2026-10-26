@@ -77,6 +77,9 @@ class SessionOut(ApiModel):
 
 class SessionDetail(SessionOut):
     usage: dict[str, Any]
+    self_hosted_stages: list[str] = Field(
+        description="Stages that ran on your own servers and so have no per-call price"
+    )
     cost_stt_usd: float | None
     cost_llm_usd: float | None
     cost_tts_usd: float | None
