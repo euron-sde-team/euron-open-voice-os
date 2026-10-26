@@ -34,7 +34,8 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from voiceos.core.contract import ResolvedAgent
 from voiceos.runtime.turns import TurnRecorder
 
-_NON_WORD = re.compile(r"[^\w\s]", re.UNICODE)
+# Indic vowel signs are not \w; keep them so Hindi words stay whole.
+_NON_WORD = re.compile(r"[^\w\s\u0900-\u0963\u0966-\u0dff]", re.UNICODE)
 
 
 def normalize(text: str) -> str:

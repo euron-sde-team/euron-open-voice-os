@@ -20,17 +20,69 @@ from pipecat.services.llm_service import FunctionCallParams
 
 from voiceos.core.contract import ResolvedAgent, ToolSpec
 
-_WORD = re.compile(r"\w+", re.UNICODE)
+# \w misses Indic vowel signs (matras), which would cut Hindi words into fragments, so
+# the Indic blocks (Devanagari to Sinhala, less the danda punctuation) count as word characters.
+_WORD = re.compile(r"[\w\u0900-\u0963\u0966-\u0dff]+", re.UNICODE)
+# Question words that would make every snippet match.
+_STOP = frozenset(
+    [
+        "the",
+        "and",
+        "are",
+        "you",
+        "your",
+        "our",
+        "for",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "how",
+        "can",
+        "does",
+        "did",
+        "with",
+        "from",
+        "this",
+        "that",
+        "there",
+        "have",
+        "has",
+        "was",
+        "were",
+        "will",
+        "would",
+        "could",
+        "should",
+        "about",
+        "into",
+        "please",
+        "tell",
+    ]
+)
+
+
+def _term(word: str) -> str:
+    """Lower-cased, with a plain English plural or tense ending folded ("Refunds", "refund")."""
+    w = word.lower()
+    if w.isascii():
+        for suffix in ("ing", "es", "ed", "s"):
+            if len(w) > len(suffix) + 3 and w.endswith(suffix):
+                return w[: -len(suffix)]
+    return w
+
+
+def _terms(text: str) -> set[str]:
+    return {_term(w) for w in _WORD.findall(text) if len(w) > 2 and w.lower() not in _STOP}
 
 
 def faq_search(snippets: list[str], query: str, limit: int = 2) -> list[str]:
     """Snippets sharing the most words with the query (stable, no model needed)."""
-    terms = {w.lower() for w in _WORD.findall(query) if len(w) > 2}
+    terms = _terms(query)
     if not terms:
         return []
-    scored = [
-        (len(terms & {w.lower() for w in _WORD.findall(s)}), i, s) for i, s in enumerate(snippets)
-    ]
+    scored = [(len(terms & _terms(s)), i, s) for i, s in enumerate(snippets)]
     best = sorted((t for t in scored if t[0] > 0), key=lambda t: (-t[0], t[1]))
     return [s for _, _, s in best[:limit]]
 
