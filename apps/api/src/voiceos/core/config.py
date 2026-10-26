@@ -59,6 +59,50 @@ class SpeechSettings(_Base):
         return _split(v)
 
 
+class RuntimeSettings(_Base):
+    """The voice runtime: transports, session limits, and how it reaches the control plane."""
+
+    control_plane_url: str = "http://localhost:4530"
+    # Shared with the control plane: signs session tokens (browser -> runtime) and
+    # authenticates the runtime's internal calls (runtime -> control plane).
+    runtime_token_secret: str = "dev-runtime-token-secret-not-for-production"
+    internal_api_token: str = "dev-internal-api-token-not-for-production"
+    max_sessions: int = Field(8, ge=1, le=1000, description="Concurrent sessions per instance")
+    allowed_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:4510"]
+    )
+    # ICE servers handed to aiortc and to browsers: "turn:host:port" URLs.
+    ice_urls: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    turn_username: str = ""
+    turn_password: str = ""
+    # Seconds an agent config stays cached in the runtime (admin edits apply after it).
+    agent_cache_ttl_s: float = 5.0
+    report_timeout_s: float = 10.0
+
+    @field_validator("allowed_origins", "ice_urls", mode="before")
+    @classmethod
+    def _lists(cls, v: object) -> object:
+        return _split(v)
+
+    def guard(self) -> None:
+        if self.environment != "production":
+            return
+        problems = [
+            f"{name.upper()} must be a random value of at least 32 chars"
+            for name in ("runtime_token_secret", "internal_api_token")
+            if _insecure(getattr(self, name))
+        ]
+        if problems:
+            raise RuntimeError("unsafe production configuration: " + "; ".join(problems))
+
+
+@lru_cache
+def get_runtime_settings() -> RuntimeSettings:
+    settings = RuntimeSettings()
+    settings.guard()
+    return settings
+
+
 @lru_cache
 def get_speech_settings() -> SpeechSettings:
     return SpeechSettings()
