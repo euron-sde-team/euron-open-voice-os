@@ -96,27 +96,46 @@ def build_llm(p: ProviderConfig, system_prompt: str) -> LLMService[Any]:
         case "openai_compatible" | "mock":
             from pipecat.services.openai.llm import OpenAILLMService
 
-            return OpenAILLMService(
-                api_key=_optional_key(p),
-                base_url=p.base_url,
-                retry_timeout_secs=p.timeout_s,
-                retry_on_timeout=True,
-                settings=OpenAILLMService.Settings(
-                    model=p.model or "gpt-4o-mini", system_instruction=system_prompt
+            return _bounded(
+                OpenAILLMService(
+                    api_key=_optional_key(p),
+                    base_url=p.base_url,
+                    retry_timeout_secs=p.timeout_s,
+                    retry_on_timeout=True,
+                    settings=OpenAILLMService.Settings(
+                        model=p.model or "gpt-4o-mini", system_instruction=system_prompt
+                    ),
                 ),
+                p.timeout_s,
             )
         case "anthropic":
             from pipecat.services.anthropic.llm import AnthropicLLMService
 
-            return AnthropicLLMService(
-                api_key=_key(p),
-                retry_timeout_secs=p.timeout_s,
-                retry_on_timeout=True,
-                settings=AnthropicLLMService.Settings(
-                    model=p.model or "claude-haiku-4-5", system_instruction=system_prompt
+            return _bounded(
+                AnthropicLLMService(
+                    api_key=_key(p),
+                    retry_timeout_secs=p.timeout_s,
+                    retry_on_timeout=True,
+                    settings=AnthropicLLMService.Settings(
+                        model=p.model or "claude-haiku-4-5", system_instruction=system_prompt
+                    ),
                 ),
+                p.timeout_s,
             )
     raise ProviderError(f"Unknown LLM adapter {p.adapter!r}")
+
+
+def _bounded(service: LLMService[Any], timeout_s: float) -> LLMService[Any]:
+    """Bound every request by the provider timeout, the retry included.
+
+    Pipecat's ``retry_on_timeout`` re-issues a slow request once *without* a timeout, so a
+    hung model would hang the caller's turn. With the client itself bounded, the retry
+    times out too and the caller hears the spoken fallback.
+    """
+    client = getattr(service, "_client", None)
+    if client is not None and hasattr(client, "with_options"):
+        service._client = client.with_options(timeout=timeout_s)  # type: ignore[attr-defined]
+    return service
 
 
 # ── TTS ──────────────────────────────────────────────────────────────────────────────

@@ -186,13 +186,14 @@ async def run_session(
     @worker.event_handler("on_pipeline_error")
     async def _error(_worker: Any, frame: Any) -> None:
         # A provider failed: say so out loud when the voice still works, and keep going.
-        source = str(getattr(frame, "processor", "") or "")
+        # Matched by identity, not by name: "OpenAISTTService" contains "TTS".
+        failed = getattr(frame, "processor", None)
         message = str(getattr(frame, "error", frame))[:200]
         if on_event:
             on_event({"type": "provider_error", "message": message})
-        if "TTS" in source:
+        if failed is tts:
             return
-        spoken = FALLBACK_STT if "STT" in source else FALLBACK_LLM
+        spoken = FALLBACK_STT if failed is stt else FALLBACK_LLM
         await worker.queue_frames([TTSSpeakFrame(spoken)])
 
     async def max_duration() -> None:
