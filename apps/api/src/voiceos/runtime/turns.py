@@ -33,6 +33,7 @@ from pipecat.frames.frames import (
     TTSAudioRawFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
+    VADUserStartedSpeakingFrame,
     VADUserStoppedSpeakingFrame,
 )
 from pipecat.metrics.metrics import (
@@ -147,18 +148,19 @@ class TurnRecorder(BaseObserver):
         self._seen_set.add(frame.id)
         now = self._now()
 
-        if isinstance(frame, UserStartedSpeakingFrame):
-            if self._bot_speaking and self._current is not None:
-                self._current.interrupted = True
-            turn = self._open()
-            turn.user_started = now
+        if isinstance(frame, (VADUserStartedSpeakingFrame, UserStartedSpeakingFrame)):
+            turn = self._user_turn()
+            if turn.user_started is None:
+                turn.user_started = now
         elif isinstance(frame, VADUserStoppedSpeakingFrame):
             # The last pause before the turn ends is the real end of speech.
-            if self._current is not None and self._current.user_stopped is None:
-                self._current.speech_end = now
+            turn = self._user_turn()
+            if turn.user_stopped is None:
+                turn.speech_end = now
         elif isinstance(frame, UserStoppedSpeakingFrame):
-            turn = self._current or self._open()
-            turn.user_stopped = now
+            turn = self._user_turn()
+            if turn.user_stopped is None:
+                turn.user_stopped = now
             if turn.speech_end is None:
                 turn.speech_end = now
         elif isinstance(frame, InterruptionFrame):
@@ -168,8 +170,8 @@ class TurnRecorder(BaseObserver):
                 target = self._turns[-2] if len(self._turns) > 1 else self._turns[-1]
                 target.interrupted = True
         elif isinstance(frame, TranscriptionFrame):
-            turn = self._current or self._open()
             if frame.text.strip():
+                turn = self._user_turn()
                 turn.user_text.append(frame.text.strip())
                 turn.transcript_at = now
         elif isinstance(frame, LLMFullResponseStartFrame):
@@ -197,6 +199,22 @@ class TurnRecorder(BaseObserver):
                 self._current.error = message
 
     # ── internals ───────────────────────────────────────────────────────────────────
+    def _user_turn(self) -> _Turn:
+        """The turn the caller is speaking in, opening one when needed.
+
+        Pipecat's turn strategies may emit the turn-start frame before or after the VAD
+        events and the transcript, so any of them opens the turn: a new one starts when
+        there is none, when the current one is the greeting, or when the agent already
+        began answering it. Speaking over the agent marks the answered turn interrupted.
+        """
+        cur = self._current
+        answering = cur is not None and (cur.llm_first is not None or cur.bot_started is not None)
+        if cur is not None and not cur.greeting and not answering:
+            return cur
+        if cur is not None and self._bot_speaking:
+            cur.interrupted = True
+        return self._open()
+
     def _open(self, *, greeting: bool = False) -> _Turn:
         turn = _Turn(len(self._turns), greeting=greeting)
         self._turns.append(turn)
