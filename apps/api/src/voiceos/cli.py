@@ -131,6 +131,12 @@ def _server(
 
 
 def main(argv: list[str] | None = None) -> None:
+    argv = argv if argv is not None else sys.argv[1:]
+    if argv[:1] == ["wer"]:
+        from voiceos.benchmarks.wer import main as wer
+
+        wer(argv[1:])
+        return
     parser = argparse.ArgumentParser(prog="voiceos", description="Euron Open VoiceOS")
     sub = parser.add_subparsers(dest="command", required=True)
     _server(sub, "serve", _serve, "control plane API")
@@ -152,6 +158,10 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("seed-demo", help="demo providers, agents and real recorded conversations")
     p.add_argument("--conversations", type=int, default=12)
     p.set_defaults(fn=_seed)
+    # Listed here for --help; its own options are parsed by voiceos.benchmarks.wer.
+    sub.add_parser(
+        "wer", help="word error rate on FLEURS through the speech service", add_help=False
+    )
     sub.add_parser("openapi", help="print the OpenAPI document as YAML").set_defaults(fn=_openapi)
-    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+    args = parser.parse_args(argv)
     args.fn(args)

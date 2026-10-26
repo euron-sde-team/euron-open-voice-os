@@ -17,7 +17,6 @@ import io
 import logging
 import struct
 import time
-import wave
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -27,6 +26,7 @@ import numpy as np
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
+from scipy.io import wavfile
 from scipy.signal import resample_poly
 from starlette.background import BackgroundTask
 
@@ -52,6 +52,9 @@ class SpeechRequest(BaseModel):
     speed: float = Field(1.0, ge=0.5, le=2.0)
 
 
+_WAV_FORMATS = "Send WAV audio: 16-bit or 32-bit PCM, or 32-bit float"
+
+
 def _error(status: int, message: str, code: str) -> JSONResponse:
     return JSONResponse(
         {"error": {"message": message, "type": "invalid_request_error", "code": code}},
@@ -60,22 +63,26 @@ def _error(status: int, message: str, code: str) -> JSONResponse:
 
 
 def decode_wav(data: bytes, max_s: float) -> np.ndarray:
-    """16 kHz mono float32 from a 16-bit PCM WAV of any rate and channel count."""
+    """16 kHz mono float32 from a 16-bit, 32-bit or float WAV of any rate and channel count."""
     try:
-        with wave.open(io.BytesIO(data)) as w:
-            if w.getsampwidth() != 2:
-                raise SpeechError("Send 16-bit PCM WAV audio")
-            rate, channels, frames = w.getframerate(), w.getnchannels(), w.getnframes()
-            if frames / rate > max_s:
-                raise SpeechError(f"Audio longer than {max_s:g} s; send one utterance at a time")
-            pcm = np.frombuffer(w.readframes(frames), dtype="<i2").astype(np.float32) / 32768
-    except (wave.Error, EOFError) as exc:
-        raise SpeechError("Send 16-bit PCM WAV audio") from exc
-    if channels > 1:
-        pcm = pcm.reshape(-1, channels).mean(axis=1)
+        rate, raw = wavfile.read(io.BytesIO(data))
+    except (ValueError, EOFError) as exc:
+        raise SpeechError(_WAV_FORMATS) from exc
+    if raw.dtype == np.int16:
+        pcm = raw.astype(np.float32) / 32768
+    elif raw.dtype == np.int32:
+        pcm = raw.astype(np.float32) / 2147483648
+    elif raw.dtype == np.float32:
+        pcm = raw
+    else:
+        raise SpeechError(_WAV_FORMATS)
+    if pcm.ndim > 1:
+        pcm = pcm.mean(axis=1)
+    if len(pcm) / rate > max_s:
+        raise SpeechError(f"Audio longer than {max_s:g} s; send one utterance at a time")
     if rate != WHISPER_SAMPLE_RATE:
-        pcm = resample_poly(pcm, WHISPER_SAMPLE_RATE, rate).astype(np.float32)
-    return pcm
+        pcm = resample_poly(pcm, WHISPER_SAMPLE_RATE, rate)
+    return np.asarray(pcm, dtype=np.float32)
 
 
 def wav_header(sample_rate: int, data_len: int = 0xFFFFFFFF - 36) -> bytes:

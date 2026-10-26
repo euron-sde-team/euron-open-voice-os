@@ -59,3 +59,4 @@ models/
 *.bin
 # Benchmark audio fetched at run time (public datasets, attribution in docs)
 benchmarks/audio/
+.cache/

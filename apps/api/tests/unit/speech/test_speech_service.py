@@ -122,8 +122,8 @@ async def test_transcription_shapes_and_model_choice(speech: Any) -> None:
 async def test_bad_audio_and_models_are_clean_400s(speech: Any) -> None:
     client, _ = speech
     cases = [
-        ({"file": ("a.wav", b"not audio", "audio/wav")}, {}, "16-bit PCM"),
-        ({"file": ("a.wav", wav(0.5, width=1), "audio/wav")}, {}, "16-bit PCM"),
+        ({"file": ("a.wav", b"not audio", "audio/wav")}, {}, "Send WAV audio"),
+        ({"file": ("a.wav", wav(0.5, width=1), "audio/wav")}, {}, "Send WAV audio"),
         ({"file": ("a.wav", wav(61.0, rate=8_000), "audio/wav")}, {}, "longer than"),
         ({"file": ("a.wav", wav(0.5), "audio/wav")}, {"model": "whisper-huge"}, "Unknown Whisper"),
     ]
@@ -204,6 +204,15 @@ def test_helpers() -> None:
     assert to_pcm16(np.array([2.0, -2.0, 0.0], dtype=np.float32)) == b"\xff\x7f\x01\x80\x00\x00"
     assert wav_header(24_000, 0)[:4] == b"RIFF"
     assert len(decode_wav(wav(0.25, rate=48_000), 5)) == 4000
+    # 32-bit float WAV (FLEURS ships these), written by hand: format tag 3.
+    floats = np.linspace(-0.5, 0.5, 1600, dtype="<f4").tobytes()
+    header = b"RIFF" + (36 + len(floats)).to_bytes(4, "little") + b"WAVEfmt "
+    header += (16).to_bytes(4, "little") + (3).to_bytes(2, "little") + (1).to_bytes(2, "little")
+    header += (16_000).to_bytes(4, "little") + (64_000).to_bytes(4, "little")
+    header += (4).to_bytes(2, "little") + (32).to_bytes(2, "little")
+    decoded = decode_wav(header + b"data" + len(floats).to_bytes(4, "little") + floats, 5)
+    assert decoded.dtype == np.float32 and len(decoded) == 1600
+    assert decoded[0] == pytest.approx(-0.5)
 
 
 def test_kokoro_download_is_checksum_verified(
