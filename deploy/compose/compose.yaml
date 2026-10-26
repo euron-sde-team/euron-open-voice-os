@@ -104,7 +104,9 @@ services:
       - models:/models:ro
     read_only: true
     tmpfs:
-      - /tmp:uid=10001,gid=10001
+      # exec: Kokoro's phonemizer copies libespeak-ng into /tmp and loads it from there,
+      # which a default (noexec) tmpfs refuses. Only this service needs it.
+      - /tmp:exec,uid=10001,gid=10001
     healthcheck:
       test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=2).status == 200 else 1)"]
       interval: 5s
@@ -221,6 +223,8 @@ services:
       MAX_SESSIONS: ${VOS_MAX_SESSIONS:-8}
       ALLOWED_ORIGINS: http://localhost:${VOS_WEB_PORT:-4510},http://127.0.0.1:${VOS_WEB_PORT:-4510}
       ICE_URLS: turn:127.0.0.1:${VOS_TURN_PORT:-4578}?transport=udp
+      # The runtime reaches the same TURN server on the Compose network.
+      SERVER_ICE_URLS: turn:turn:3478?transport=udp
       TURN_PASSWORD: ${TURN_SECRET:?run `make env` first}
     ports:
       - "127.0.0.1:${VOS_RUNTIME_PORT:-4535}:8080"
