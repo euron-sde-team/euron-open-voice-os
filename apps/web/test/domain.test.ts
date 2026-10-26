@@ -42,7 +42,7 @@ describe("glossary", () => {
   it("explains every metric in plain words without dashes", () => {
     for (const text of Object.values(GLOSSARY)) {
       expect(text.length).toBeGreaterThan(40);
-      expect(text).not.toMatch(/[–—]/);
+      expect(text).not.toMatch(/[\u2013\u2014]/);
     }
   });
 });

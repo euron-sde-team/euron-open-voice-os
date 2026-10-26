@@ -49,6 +49,13 @@ class Result:
     events: list[dict[str, Any]] = field(default_factory=list)
     closed_code: int | None = None
     first_audio_after_speech: float | None = None
+    # Monotonic times each utterance started and finished streaming.
+    speech_started: list[float] = field(default_factory=list)
+    speech_ended: list[float] = field(default_factory=list)
+
+    def audio_between(self, start: float, end: float) -> float:
+        """Seconds of agent audio received between two monotonic times."""
+        return sum(n for t, n in self.audio_frames if start <= t <= end) / 2 / 24_000
 
     def texts(self, kind: str) -> list[str]:
         out = []
@@ -139,6 +146,7 @@ async def converse(
         step = SAMPLE_RATE * 2 * FRAME_MS // 1000
         for pcm in utterances:
             started = time.monotonic()
+            result.speech_started.append(started)
             for i in range(0, len(pcm), step):
                 await ws.send(_audio_message(pcm[i : i + step]))
                 # Real time: the runtime's VAD and turn detection see natural pacing.
@@ -146,11 +154,12 @@ async def converse(
                     max(0.0, started + (i + step) / (SAMPLE_RATE * 2) - time.monotonic())
                 )
             speech_ended.append(time.monotonic())
+            result.speech_ended.append(speech_ended[-1])
             quiet = silence(gap_s)
             for i in range(0, len(quiet), step):
                 await ws.send(_audio_message(quiet[i : i + step]))
                 await asyncio.sleep(FRAME_MS / 1000)
-        deadline = time.monotonic() + reply_timeout_s
+        deadline = time.monotonic() + (reply_timeout_s if utterances else 0.0)
         while time.monotonic() < deadline and not answered.is_set() and not receiver.done():
             await ws.send(quiet_frame)
             await asyncio.sleep(FRAME_MS / 1000)
