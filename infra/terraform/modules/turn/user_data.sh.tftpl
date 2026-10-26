@@ -1,0 +1,44 @@
+#!/bin/bash
+# Boot script for the VoiceOS TURN relay (Amazon Linux 2023). Rendered by Terraform; the
+# TURN secret is fetched here at boot and never appears in user data or state.
+set -euo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+
+secret="$(aws secretsmanager get-secret-value --region '${region}' --secret-id '${secret_arn}' \
+  --query SecretString --output text | python3 -c 'import json, sys; print(json.load(sys.stdin)["TURN_SECRET"])')"
+
+install -d -m 0700 /etc/coturn
+umask 077
+cat > /etc/coturn/turnserver.conf <<CONF
+listening-port=3478
+fingerprint
+use-auth-secret
+static-auth-secret=$secret
+realm=${realm}
+external-ip=${public_ip}
+min-port=${relay_port_min}
+max-port=${relay_port_max}
+no-cli
+no-tls
+no-dtls
+no-multicast-peers
+# Relay only to the runtime's network: never the metadata service, never the internet.
+denied-peer-ip=0.0.0.0-255.255.255.255
+allowed-peer-ip=${peer_range}
+log-file=stdout
+# Health checks for the load balancer (/) and metrics (/metrics) on 9641, VPC only.
+prometheus
+CONF
+# The coturn image runs as nobody (65534); only it and root can read the secret.
+chown 65534:65534 /etc/coturn/turnserver.conf
+chmod 0400 /etc/coturn/turnserver.conf
+
+docker rm -f coturn >/dev/null 2>&1 || true
+docker run -d --name coturn --restart=always --network host --read-only \
+  --tmpfs /var/lib/coturn --tmpfs /tmp \
+  -v /etc/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro \
+  --log-driver awslogs --log-opt awslogs-region='${region}' --log-opt awslogs-group='${log_group}' \
+  --log-opt awslogs-stream=coturn \
+  '${image}' -c /etc/coturn/turnserver.conf

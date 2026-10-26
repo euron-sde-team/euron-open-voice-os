@@ -1,0 +1,24 @@
+# Copy to terraform.tfvars (git-ignored) and replace every placeholder.
+region      = "us-east-1"
+name_prefix = "acme-voiceos-prod" # the objects bucket name derives from this: make it globally unique
+
+hostname         = "voice.example.com"
+runtime_hostname = "voice-rt.example.com"
+certificate_arn  = "<ACM_CERTIFICATE_ARN>"     # same region, covering both host names
+route53_zone_id  = "<ROUTE53_HOSTED_ZONE_ID>" # or remove and CNAME both names to load_balancer_dns_name
+
+# The image tag pushed to the ecr_repositories output (git commit or release).
+image_tag = "0.1.0"
+
+# alarm_email              = "oncall@example.com"
+# session_failed_threshold = 10
+# runtime_max_sessions     = 8
+# audio_retention_days     = 30
+# metrics_allowed_cidrs    = ["203.0.113.10/32"] # your Prometheus egress address
+
+# A self-hosted model server inside the VPC (Ollama, vLLM) on a port other than 443:
+# provider_egress = [{ cidr = "10.0.0.0/16", port = 11434 }]
+
+# Extra non-secret settings (see docs/guides/configuration.md).
+# api_extra_environment     = { DEFAULT_RPM_LIMIT = "120" }
+# runtime_extra_environment = { AGENT_CACHE_TTL_S = "5" }
