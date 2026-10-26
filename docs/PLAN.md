@@ -4,7 +4,7 @@ Project 05 of the Euron open-source program. Repo `euron-open-voice-os`, display
 "Euron Open VoiceOS", product UI short name "VoiceOS". Rules: `../../CLAUDE.md`. Brief:
 `../../briefs/05-voice-os.md` (it extends this plan; where they conflict the rules win).
 
-Status: plan for review. No code yet.
+Status: approved 2026-10-26; spikes 1 and 2 done (results below).
 
 ## Purpose
 
@@ -76,10 +76,10 @@ stack (TokenShield budgets, SmartRouter `model=auto`, ContextForge for long conv
   for Docker) and WebSocket; Silero VAD plus Smart Turn v3; interruptions; session lifecycle
   (start, idle timeout, max duration, disconnect cleanup); per-instance session cap.
 - **Providers** (one adapter file each, chosen by config):
-  - STT: local Whisper (faster-whisper, CPU or GPU), OpenAI-compatible transcription (OpenAI,
+  - STT: local Whisper (the `speech` service, CPU or GPU), OpenAI-compatible transcription (OpenAI,
     Groq, self-hosted Whisper servers), Deepgram, Sarvam (Indian languages).
   - LLM: OpenAI-compatible chat (OpenAI, Ollama, vLLM, TokenShield, SmartRouter), Anthropic.
-  - TTS: local Kokoro (Apache-2.0, includes Hindi voices), OpenAI-compatible speech,
+  - TTS: local Kokoro (the `speech` service; Apache-2.0 weights, includes Hindi voices), OpenAI-compatible speech,
     ElevenLabs, Cartesia, Sarvam (Indian languages).
   - Mock providers (a Compose service) for tests and the zero-key demo, with failure
     injection.
@@ -124,6 +124,7 @@ tenant organisations; Kubernetes.
 | `web` | Next.js dashboard and Talk page | 4510 |
 | `api` | Control plane: auth, agents, providers, sessions, usage, analytics, session tokens | 4530 |
 | `runtime` | Voice runtime: WebRTC offer/answer, WebSocket audio, Pipecat pipelines | 4535 |
+| `speech` | Local speech models behind OpenAI-compatible endpoints: `/v1/audio/transcriptions` (faster-whisper) and streamed `/v1/audio/speech` (Kokoro). Its own container because Kokoro needs espeak-ng (GPL-3.0), kept out of the MIT code, and so models can scale or move to a GPU on their own | 4537 |
 | `worker` | Retention purge, rollups, benchmark runs | n/a |
 | `mock-providers` | OpenAI-compatible LLM, STT and TTS stand-ins with failure injection | 4550 |
 | `turn` | coturn, so WebRTC works from Docker Desktop | 4578 (+ small relay range inside 4581 to 4589) |
@@ -173,7 +174,7 @@ AWS. `make tf-aws-on-floci` applies all of it against a throwaway Floci on port 
 
 ## Ports (project 05)
 
-web 4510, api 4530, runtime 4535, postgres 4542, redis 4579, floci 4566, mock providers
+web 4510, api 4530, runtime 4535, speech 4537, postgres 4542, redis 4579, floci 4566, mock providers
 4550, TURN 4578 with relay ports 4581 to 4589, tf-aws-on-floci 4596. Compose project
 `voiceos`. All overridable in `deploy/compose/.env`.
 
@@ -199,6 +200,22 @@ show cost as "self-hosted (hardware not included)", never as free savings. Cloud
 results appear only when someone runs the benchmark with their own keys; the committed
 numbers use local and mock providers and say so. WER uses a small public sample and says
 how many utterances.
+
+## Spike results (2026-10-26, arm64 Docker on a 12-core laptop CPU, no GPU)
+
+| Model | English | Hindi |
+| --- | --- | --- |
+| Whisper tiny, int8 | 0.30 s for 3.7 s of speech, correct | 0.41 s, wrong (romanized) |
+| Whisper base, int8 | 0.52 s, correct | 0.88 s, wrong script |
+| Whisper small, int8 | 2.4 s, correct | 2.8 s, correct Devanagari |
+| Kokoro int8 | 2.2 s to synthesize 3.7 s | 0.9 s to synthesize 3.5 s |
+
+Decisions: English agents default to Whisper `base`; Hindi agents default to Whisper `small`
+locally (slow on CPU, stated in the UI) with Sarvam or a GPU recommended for snappy turns;
+TTS streams sentence by sentence so the first audio waits only for the first sentence.
+`kokoro-v1.0.int8.onnx` is as good and as fast as the full model and a third of the size.
+On macOS the `espeakng-loader` wheel ignores its data path, one more reason the speech
+models run in a Linux container with the distribution's `espeak-ng`.
 
 ## Risks and first spikes
 
