@@ -51,6 +51,7 @@ class Hardware(ApiModel):
     cpu: str | None = None
     gpu: str | None = None
     python: str | None = None
+    load_average_1m: float | None = None
 
 
 class BenchmarkConfig(ApiModel):

@@ -887,6 +887,8 @@ export interface components {
             gpu?: string | null;
             /** Python */
             python?: string | null;
+            /** Load Average 1M */
+            load_average_1m?: number | null;
         };
         /** KeyCreated */
         KeyCreated: {

@@ -50,6 +50,11 @@ def hardware() -> dict[str, Any]:
     except OSError:
         pass
     info["gpu"] = os.environ.get("BENCH_GPU", "none detected (CPU only)")
+    # A busy host slows CPU-bound speech models; the load explains numbers that look slow.
+    try:
+        info["load_average_1m"] = round(os.getloadavg()[0], 1)
+    except OSError:
+        info["load_average_1m"] = None
     return info
 
 

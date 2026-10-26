@@ -1659,6 +1659,11 @@ components:
           - type: string
           - type: 'null'
           title: Python
+        load_average_1m:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Load Average 1M
       type: object
       title: Hardware
     KeyCreated:

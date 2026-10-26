@@ -153,6 +153,14 @@ def hardware() -> dict[str, Any]:
     return {"machine": platform.machine(), "system": platform.system(), "cpus": os.cpu_count()}
 
 
+def load_average() -> float | None:
+    """One-minute load average, recorded so slow numbers on a busy machine are explained."""
+    try:
+        return round(os.getloadavg()[0], 1)
+    except OSError:
+        return None
+
+
 def markdown(results: list[Result], n: int, hw: dict[str, Any], note: str) -> str:
     lines = [
         "# Speech recognition accuracy",
@@ -163,7 +171,8 @@ def markdown(results: list[Result], n: int, hw: dict[str, Any], note: str) -> st
         "the language set. Lower is better. Reference and hypothesis are normalized the same way",
         "(lower case, punctuation removed).",
         "",
-        f"Machine: {hw['machine']} {hw['system']}, {hw['cpus']} CPUs, no GPU. {note}",
+        f"Machine: {hw['machine']} {hw['system']}, {hw['cpus']} CPUs, no GPU; one-minute load"
+        f" average {hw.get('load_start')} at the start and {hw.get('load_end')} at the end. {note}",
         "",
         "| Language | Model | Utterances | WER | CER | Seconds per audio second |",
         "| --- | --- | ---: | ---: | ---: | ---: |",
@@ -195,6 +204,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--note", default="", help="Context for the reader, e.g. machine load")
     args = parser.parse_args(argv)
     results: list[Result] = []
+    load_start = load_average()
     for lang in [x for x in args.languages.split(",") if x]:
         clips = fetch_clips(lang, args.n, Path(args.cache))
         for model in [x for x in args.models.split(",") if x]:
@@ -203,7 +213,7 @@ def main(argv: list[str] | None = None) -> None:
             results.append(r)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    hw = hardware()
+    hw = {**hardware(), "load_start": load_start, "load_end": load_average()}
     (out / "wer.json").write_text(
         json.dumps(
             {

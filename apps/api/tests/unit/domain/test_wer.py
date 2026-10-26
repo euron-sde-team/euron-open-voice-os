@@ -27,8 +27,8 @@ def test_tsv_and_report() -> None:
     md = markdown(
         [Result("hi", "whisper-small", 25, 0.31, 0.12, 120.0, 0.8)],
         25,
-        {"machine": "arm64", "system": "Linux", "cpus": 8},
+        {"machine": "arm64", "system": "Linux", "cpus": 8, "load_start": 1.0, "load_end": 2.0},
         "Quiet machine.",
     )
     assert "| Hindi | whisper-small | 25 | 31.0% | 12.0% | 0.80 |" in md
-    assert "CC-BY-4.0" in md and "8 CPUs" in md
+    assert "CC-BY-4.0" in md and "8 CPUs" in md and "1.0 at the start" in md

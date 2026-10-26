@@ -219,7 +219,8 @@ function RunResults({ run }: { run: Benchmark }) {
             </div>
             <p className="mt-4 inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
               <CpuIcon className="size-3.5" />
-              Measured on {hw.cpu ?? hw.machine ?? "unknown CPU"}, {hw.cpus ?? "?"} CPUs, GPU: {hw.gpu ?? "none"}. Local speech models are CPU bound; a busy host makes these numbers worse.
+              Measured on {hw.cpu ?? hw.machine ?? "unknown CPU"}, {hw.cpus ?? "?"} CPUs, GPU: {hw.gpu ?? "none"}
+              {hw.load_average_1m != null && <>, load average {hw.load_average_1m}</>}. Local speech models are CPU bound; a busy host makes these numbers worse.
             </p>
           </>
         )}
