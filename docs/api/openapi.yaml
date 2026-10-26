@@ -1070,7 +1070,6 @@ components:
           default:
             transcript_retention_days: 30
             redact_pii: true
-            store_audio: false
         cache:
           $ref: '#/components/schemas/CacheSettings'
           default:
@@ -2129,10 +2128,6 @@ components:
           type: boolean
           title: Redact Pii
           default: true
-        store_audio:
-          type: boolean
-          title: Store Audio
-          default: false
       additionalProperties: false
       type: object
       title: PrivacySettings

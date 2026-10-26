@@ -571,8 +571,7 @@ export interface components {
             /**
              * @default {
              *       "transcript_retention_days": 30,
-             *       "redact_pii": true,
-             *       "store_audio": false
+             *       "redact_pii": true
              *     }
              */
             privacy?: components["schemas"]["PrivacySettings"];
@@ -1126,11 +1125,6 @@ export interface components {
              * @default true
              */
             redact_pii?: boolean;
-            /**
-             * Store Audio
-             * @default false
-             */
-            store_audio?: boolean;
         };
         /** ProviderIn */
         ProviderIn: {

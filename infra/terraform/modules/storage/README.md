@@ -1,6 +1,6 @@
 # `storage` module
 
-One private S3 bucket, `<name_prefix>-objects` (`OBJECTS_BUCKET`), for session audio (only when an agent opts in with `store_audio`, off by default) and benchmark reports. Objects are written with SSE-KMS and expire on a schedule.
+One private S3 bucket, `<name_prefix>-objects` (`OBJECTS_BUCKET`). VoiceOS 0.1.0 writes nothing to it: no audio is recorded and benchmark results live in Postgres. It is provisioned, encrypted with SSE-KMS and given its expiry rules now, for the roadmap's opt-in session recordings and report exports.
 
 - Public access blocked, bucket-owner-enforced ownership, TLS-only bucket policy (`aws:SecureTransport`).
 - Default encryption SSE-KMS with the CMK (bucket key on), SSE-S3 when no key is given.

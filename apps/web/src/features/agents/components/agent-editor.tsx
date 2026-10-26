@@ -196,7 +196,7 @@ export function AgentEditor({ id }: { id: string }) {
         interruption_min_words: n(form.min_words, 1),
         transcript_wait_s: n(form.transcript_wait, 15),
       },
-      privacy: { transcript_retention_days: n(form.retention, 30), redact_pii: form.redact, store_audio: false },
+      privacy: { transcript_retention_days: n(form.retention, 30), redact_pii: form.redact },
       cache: { tts_phrase_cache: form.phrase_cache, response_cache: form.response_cache && form.tools.size === 0 },
       tools: [...form.tools].map((name) => (name === "http_webhook" ? { name, url: form.webhook.trim() } : { name })),
       faq: form.faq.split("\n").map((l) => l.trim()).filter(Boolean),

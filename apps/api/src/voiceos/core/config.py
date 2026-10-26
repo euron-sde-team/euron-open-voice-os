@@ -180,7 +180,6 @@ class RuntimeSettings(_Base):
     # The same TURN server as the runtime itself reaches it (a private address); empty
     # means the browser URLs, which is right when both sides see the same address.
     server_ice_urls: Annotated[list[str], NoDecode] = Field(default_factory=list)
-    turn_username: str = ""
     turn_password: str = ""
     # Seconds an agent config stays cached in the runtime (admin edits apply after it).
     agent_cache_ttl_s: float = 5.0

@@ -36,8 +36,9 @@ dependencies = [
 runtime = [
   "pipecat-ai[webrtc,websocket,openai,deepgram,sarvam,anthropic]==1.14.0",
 ]
-# Local speech models served over OpenAI-compatible endpoints. Kokoro needs the system
-# espeak-ng (GPL-3.0), installed only in the speech container image, never imported here.
+# Local speech models served over OpenAI-compatible endpoints. Kokoro phonemizes through
+# phonemizer and espeak-ng (both GPL-3.0), loaded only by the speech service: they live in
+# the speech image alone, never in the API, runtime or web images (docs/architecture/licenses.md).
 speech = [
   "faster-whisper==1.2.1",
   "kokoro-onnx==0.6.1",

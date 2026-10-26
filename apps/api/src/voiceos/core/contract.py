@@ -71,7 +71,6 @@ class TurnSettings(_Model):
 class PrivacySettings(_Model):
     transcript_retention_days: int = Field(30, ge=0, le=3650, description="0: never stored")
     redact_pii: bool = True
-    store_audio: bool = False
 
 
 class CacheSettings(_Model):

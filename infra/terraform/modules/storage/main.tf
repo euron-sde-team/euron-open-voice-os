@@ -1,7 +1,7 @@
-# One private bucket for objects too large to keep in Postgres: session audio (only when
-# an agent opts in with store_audio; off by default) and benchmark reports. Rows hold only
-# the object key. Audio is personal data, so it expires on a fixed schedule instead of
-# being versioned and kept.
+# One private bucket for objects too large to keep in Postgres. VoiceOS 0.1.0 writes
+# nothing here: it is provisioned (and its lifecycle rules fixed) for the roadmap's opt-in
+# session recordings and report exports. Audio is personal data, so those will expire on a
+# fixed schedule instead of being versioned and kept.
 resource "aws_s3_bucket" "objects" {
   #checkov:skip=CKV_AWS_144:Cross-region replication would copy personal audio to a second region; objects are short-lived by design.
   #checkov:skip=CKV_AWS_18:Access logging targets a separate log bucket an operator chooses; CloudTrail data events cover object access (docs/guides/operations.md).
