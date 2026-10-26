@@ -1,0 +1,3170 @@
+openapi: 3.1.0
+info:
+  title: Euron Open VoiceOS
+  description: "\nControl plane of a self-hosted real-time voice agent platform: agents, providers, session\n\
+    tickets, conversation history with latency and cost, and analytics.\n\n* `POST /v1/sessions` (SDK\
+    \ key, `Authorization: Bearer vos_...`): start a voice session\n  with an agent. The ticket carries\
+    \ a one-minute token and the runtime URLs (WebRTC offer\n  and WebSocket), plus the disclosure of\
+    \ any external provider.\n* `/api/v1/*`: the dashboard API (session token from `POST /api/v1/auth/login`).\n\
+    \nThe voice runtime is a separate service; see the repository README.\n"
+  version: 0.1.0
+paths:
+  /v1/sessions:
+    post:
+      tags:
+      - sdk
+      summary: Start a session with an SDK key (your backend, or an origin-bound embed)
+      operationId: sdk_start_v1_sessions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionStart'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionTicket'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/login:
+    post:
+      tags:
+      - auth
+      summary: Sign in to the dashboard
+      operationId: login_api_v1_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignInOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/logout:
+    post:
+      tags:
+      - auth
+      summary: Sign out
+      description: 'Ends this session server-side too: the token is refused until it expires.'
+      operationId: logout_api_v1_auth_logout_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ack'
+  /api/v1/auth/me:
+    get:
+      tags:
+      - auth
+      summary: The signed-in user
+      operationId: me_api_v1_auth_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOut'
+  /api/v1/auth/password:
+    post:
+      tags:
+      - auth
+      summary: Change your password
+      operationId: password_api_v1_auth_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChange'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignInOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/users:
+    get:
+      tags:
+      - users
+      summary: List dashboard users
+      operationId: list_users_api_v1_users_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/UserOut'
+                type: array
+                title: Response List Users Api V1 Users Get
+    post:
+      tags:
+      - users
+      summary: Invite a dashboard user
+      operationId: create_user_api_v1_users_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/users/{user_id}:
+    patch:
+      tags:
+      - users
+      summary: Update a user's name, role or access
+      operationId: update_user_api_v1_users__user_id__patch
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/keys:
+    get:
+      tags:
+      - api keys
+      summary: List service keys
+      operationId: list_keys_api_v1_keys_get
+      parameters:
+      - name: include_revoked
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Include Revoked
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/KeyOut'
+                title: Response List Keys Api V1 Keys Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - api keys
+      summary: Create a key (shown once)
+      operationId: create_key_api_v1_keys_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KeyIn'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyCreated'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/keys/{key_id}:
+    patch:
+      tags:
+      - api keys
+      summary: Update a key's name, limit or defaults
+      operationId: update_key_api_v1_keys__key_id__patch
+      parameters:
+      - name: key_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Key Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KeyUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/keys/{key_id}/revoke:
+    post:
+      tags:
+      - api keys
+      summary: Revoke a key immediately
+      operationId: revoke_key_api_v1_keys__key_id__revoke_post
+      parameters:
+      - name: key_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Key Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/providers:
+    get:
+      tags:
+      - providers
+      summary: Configured STT, LLM and TTS providers
+      operationId: list_providers_api_v1_providers_get
+      parameters:
+      - name: stage
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            pattern: ^(stt|llm|tts)$
+          - type: 'null'
+          title: Stage
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProviderOut'
+                title: Response List Providers Api V1 Providers Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - providers
+      summary: Add a provider
+      operationId: create_provider_api_v1_providers_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderIn'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/providers/{provider_id}:
+    patch:
+      tags:
+      - providers
+      summary: Edit a provider
+      operationId: update_provider_api_v1_providers__provider_id__patch
+      parameters:
+      - name: provider_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Provider Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - providers
+      summary: Delete an unused provider
+      operationId: delete_provider_api_v1_providers__provider_id__delete
+      parameters:
+      - name: provider_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Provider Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/providers/{provider_id}/test:
+    post:
+      tags:
+      - providers
+      summary: Check it is reachable
+      operationId: check_provider_api_v1_providers__provider_id__test_post
+      parameters:
+      - name: provider_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Provider Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderTest'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/agents:
+    get:
+      tags:
+      - agents
+      summary: Voice agents
+      operationId: list_agents_api_v1_agents_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AgentOut'
+                type: array
+                title: Response List Agents Api V1 Agents Get
+    post:
+      tags:
+      - agents
+      summary: Create an agent
+      operationId: create_agent_api_v1_agents_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentIn'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/agents/templates:
+    get:
+      tags:
+      - agents
+      summary: Agent templates
+      operationId: templates_api_v1_agents_templates_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/TemplateOut'
+                type: array
+                title: Response Templates Api V1 Agents Templates Get
+  /api/v1/agents/{agent_id}:
+    get:
+      tags:
+      - agents
+      summary: One agent
+      operationId: get_agent_api_v1_agents__agent_id__get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - agents
+      summary: Edit an agent (bumps its version)
+      operationId: update_agent_api_v1_agents__agent_id__patch
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - agents
+      summary: Delete an agent (sessions are kept)
+      operationId: delete_agent_api_v1_agents__agent_id__delete
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/agents/from-template:
+    post:
+      tags:
+      - agents
+      summary: Create from a template
+      operationId: create_from_template_api_v1_agents_from_template_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentFromTemplate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/sessions:
+    post:
+      tags:
+      - sessions
+      summary: Start a session from the dashboard (Talk page)
+      operationId: start_session_api_v1_sessions_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionStart'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionTicket'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - sessions
+      summary: Finished sessions, newest first
+      operationId: list_sessions_api_v1_sessions_get
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: agent_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Agent Id
+      - name: errors_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Errors Only
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_SessionOut_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/sessions/{session_id}:
+    get:
+      tags:
+      - sessions
+      summary: One session with its turns
+      operationId: get_session_api_v1_sessions__session_id__get
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/sessions/{session_id}/transcript:
+    delete:
+      tags:
+      - sessions
+      summary: Erase a session's transcript now (timings and usage stay)
+      operationId: erase_transcript_api_v1_sessions__session_id__transcript_delete
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/analytics/overview:
+    get:
+      tags:
+      - analytics
+      summary: Conversations, latency, cost and savings
+      operationId: overview_api_v1_analytics_overview_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 90
+          minimum: 1
+          default: 7
+          title: Days
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Overview'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/benchmarks:
+    get:
+      tags:
+      - benchmarks
+      summary: Benchmark runs, newest first
+      operationId: list_runs_api_v1_benchmarks_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BenchmarkOut'
+                title: Response List Runs Api V1 Benchmarks Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - benchmarks
+      summary: Queue a latency benchmark
+      operationId: queue_api_v1_benchmarks_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenchmarkIn'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/benchmarks/{run_id}:
+    get:
+      tags:
+      - benchmarks
+      summary: One benchmark run
+      operationId: get_run_api_v1_benchmarks__run_id__get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/audit:
+    get:
+      tags:
+      - audit
+      summary: Append-only audit log
+      operationId: list_audit_api_v1_audit_get
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: action
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Action
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_AuditOut_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /healthz:
+    get:
+      tags:
+      - system
+      summary: Liveness
+      operationId: healthz_healthz_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Healthz Healthz Get
+  /health:
+    get:
+      tags:
+      - system
+      summary: Liveness (alias of /healthz)
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Health Health Get
+  /readyz:
+    get:
+      tags:
+      - system
+      summary: 'Readiness: Postgres reachable (Redis too, when configured)'
+      operationId: readyz_readyz_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Readyz Readyz Get
+  /api/v1/system:
+    get:
+      tags:
+      - system
+      summary: Deployment configuration
+      operationId: system_api_v1_system_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInfo'
+components:
+  schemas:
+    Ack:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+          default: true
+        message:
+          type: string
+          title: Message
+          default: ''
+      type: object
+      title: Ack
+    AgentBreakdown:
+      properties:
+        agent_key:
+          type: string
+          title: Agent Key
+        agent_name:
+          type: string
+          title: Agent Name
+        sessions:
+          type: integer
+          title: Sessions
+        minutes:
+          type: number
+          title: Minutes
+        response_ms_avg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms Avg
+        cost_per_session_usd:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Per Session Usd
+      type: object
+      required:
+      - agent_key
+      - agent_name
+      - sessions
+      - minutes
+      - response_ms_avg
+      - cost_per_session_usd
+      title: AgentBreakdown
+    AgentFromTemplate:
+      properties:
+        template:
+          type: string
+          title: Template
+        name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Name
+        stt_provider_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Stt Provider Id
+        llm_provider_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Llm Provider Id
+        tts_provider_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Tts Provider Id
+      type: object
+      required:
+      - template
+      title: AgentFromTemplate
+    AgentIn:
+      properties:
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        greeting:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Greeting
+        voice:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Voice
+          description: Overrides the TTS provider voice
+        llm_small_provider_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Llm Small Provider Id
+          description: Optional cheaper model for short turns (cost optimizer routing)
+        small_model_max_words:
+          type: integer
+          maximum: 100.0
+          minimum: 1.0
+          title: Small Model Max Words
+          default: 8
+        turn:
+          $ref: '#/components/schemas/TurnSettings'
+          default:
+            mode: smart
+            vad_stop_secs: 0.6
+            allow_interruptions: true
+            interruption_min_words: 1
+            transcript_wait_s: 15.0
+        privacy:
+          $ref: '#/components/schemas/PrivacySettings'
+          default:
+            transcript_retention_days: 30
+            redact_pii: true
+            store_audio: false
+        cache:
+          $ref: '#/components/schemas/CacheSettings'
+          default:
+            tts_phrase_cache: true
+            response_cache: false
+        tools:
+          items:
+            $ref: '#/components/schemas/ToolSpec'
+          type: array
+          maxItems: 10
+          title: Tools
+        faq:
+          items:
+            type: string
+          type: array
+          maxItems: 200
+          title: Faq
+        max_duration_s:
+          type: integer
+          maximum: 7200.0
+          minimum: 30.0
+          title: Max Duration S
+          default: 900
+        idle_timeout_s:
+          type: integer
+          maximum: 600.0
+          minimum: 10.0
+          title: Idle Timeout S
+          default: 60
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+        language:
+          type: string
+          pattern: ^[a-z]{2,3}(-[A-Za-z]{2,4})?$
+          title: Language
+          default: en
+        system_prompt:
+          type: string
+          maxLength: 8000
+          minLength: 1
+          title: System Prompt
+        stt_provider_id:
+          type: string
+          format: uuid
+          title: Stt Provider Id
+        llm_provider_id:
+          type: string
+          format: uuid
+          title: Llm Provider Id
+        tts_provider_id:
+          type: string
+          format: uuid
+          title: Tts Provider Id
+      type: object
+      required:
+      - name
+      - system_prompt
+      - stt_provider_id
+      - llm_provider_id
+      - tts_provider_id
+      title: AgentIn
+    AgentOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        template:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Template
+        language:
+          type: string
+          title: Language
+        system_prompt:
+          type: string
+          title: System Prompt
+        greeting:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Greeting
+        voice:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Voice
+        stt:
+          $ref: '#/components/schemas/ProviderRef'
+        llm:
+          $ref: '#/components/schemas/ProviderRef'
+        llm_small:
+          anyOf:
+          - $ref: '#/components/schemas/ProviderRef'
+          - type: 'null'
+        tts:
+          $ref: '#/components/schemas/ProviderRef'
+        small_model_max_words:
+          type: integer
+          title: Small Model Max Words
+        turn:
+          $ref: '#/components/schemas/TurnSettings'
+        privacy:
+          $ref: '#/components/schemas/PrivacySettings'
+        cache:
+          $ref: '#/components/schemas/CacheSettings'
+        tools:
+          items:
+            $ref: '#/components/schemas/ToolSpec'
+          type: array
+          title: Tools
+        faq:
+          items:
+            type: string
+          type: array
+          title: Faq
+        max_duration_s:
+          type: integer
+          title: Max Duration S
+        idle_timeout_s:
+          type: integer
+          title: Idle Timeout S
+        enabled:
+          type: boolean
+          title: Enabled
+        version:
+          type: integer
+          title: Version
+        external_providers:
+          items:
+            type: string
+          type: array
+          title: External Providers
+          description: Providers that receive this agent's audio or text outside your infrastructure
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - description
+      - template
+      - language
+      - system_prompt
+      - greeting
+      - voice
+      - stt
+      - llm
+      - llm_small
+      - tts
+      - small_model_max_words
+      - turn
+      - privacy
+      - cache
+      - tools
+      - faq
+      - max_duration_s
+      - idle_timeout_s
+      - enabled
+      - version
+      - external_providers
+      - created_at
+      - updated_at
+      title: AgentOut
+    AgentResult:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        language:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+        providers:
+          additionalProperties:
+            type: string
+          type: object
+          title: Providers
+        sessions:
+          type: integer
+          title: Sessions
+          default: 0
+        turns:
+          type: integer
+          title: Turns
+          default: 0
+        response_ms_p50:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms P50
+        response_ms_p95:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms P95
+        client_first_audio_ms_p50:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Client First Audio Ms P50
+          description: 'Measured by the benchmark client: its audio end to the first reply audio'
+        client_first_audio_ms_p95:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Client First Audio Ms P95
+        stages_ms_avg:
+          $ref: '#/components/schemas/StageAverages'
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      title: AgentResult
+      description: One agent's measurements; `error` is set instead when the agent could not run.
+    AgentUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        language:
+          anyOf:
+          - type: string
+            pattern: ^[a-z]{2,3}(-[A-Za-z]{2,4})?$
+          - type: 'null'
+          title: Language
+        system_prompt:
+          anyOf:
+          - type: string
+            maxLength: 8000
+            minLength: 1
+          - type: 'null'
+          title: System Prompt
+        greeting:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Greeting
+        voice:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Voice
+        stt_provider_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Stt Provider Id
+        llm_provider_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Llm Provider Id
+        llm_small_provider_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Llm Small Provider Id
+        tts_provider_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Tts Provider Id
+        small_model_max_words:
+          anyOf:
+          - type: integer
+            maximum: 100.0
+            minimum: 1.0
+          - type: 'null'
+          title: Small Model Max Words
+        turn:
+          anyOf:
+          - $ref: '#/components/schemas/TurnSettings'
+          - type: 'null'
+        privacy:
+          anyOf:
+          - $ref: '#/components/schemas/PrivacySettings'
+          - type: 'null'
+        cache:
+          anyOf:
+          - $ref: '#/components/schemas/CacheSettings'
+          - type: 'null'
+        tools:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/ToolSpec'
+            type: array
+            maxItems: 10
+          - type: 'null'
+          title: Tools
+        faq:
+          anyOf:
+          - items:
+              type: string
+            type: array
+            maxItems: 200
+          - type: 'null'
+          title: Faq
+        max_duration_s:
+          anyOf:
+          - type: integer
+            maximum: 7200.0
+            minimum: 30.0
+          - type: 'null'
+          title: Max Duration S
+        idle_timeout_s:
+          anyOf:
+          - type: integer
+            maximum: 600.0
+            minimum: 10.0
+          - type: 'null'
+          title: Idle Timeout S
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+      type: object
+      title: AgentUpdate
+    AuditOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        at:
+          type: string
+          format: date-time
+          title: At
+        actor_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Actor Id
+        actor_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Email
+        action:
+          type: string
+          title: Action
+        target_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Target Type
+        target_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Target Id
+        details:
+          additionalProperties: true
+          type: object
+          title: Details
+        ip:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ip
+      type: object
+      required:
+      - id
+      - at
+      - actor_id
+      - actor_email
+      - action
+      - target_type
+      - target_id
+      - details
+      - ip
+      title: AuditOut
+    BenchmarkConfig:
+      properties:
+        agent_ids:
+          items:
+            type: string
+          type: array
+          title: Agent Ids
+        sessions:
+          type: integer
+          title: Sessions
+          default: 0
+      type: object
+      title: BenchmarkConfig
+    BenchmarkIn:
+      properties:
+        kind:
+          type: string
+          const: latency
+          title: Kind
+          default: latency
+        agent_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 5
+          minItems: 1
+          title: Agent Ids
+        sessions:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Sessions
+          description: Conversations per agent
+          default: 5
+      type: object
+      required:
+      - agent_ids
+      title: BenchmarkIn
+    BenchmarkOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          title: Kind
+        status:
+          type: string
+          title: Status
+        config:
+          $ref: '#/components/schemas/BenchmarkConfig'
+        results:
+          $ref: '#/components/schemas/BenchmarkResults'
+        hardware:
+          $ref: '#/components/schemas/Hardware'
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        finished_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Finished At
+      type: object
+      required:
+      - id
+      - kind
+      - status
+      - config
+      - results
+      - hardware
+      - error
+      - created_at
+      - started_at
+      - finished_at
+      title: BenchmarkOut
+    BenchmarkResults:
+      properties:
+        agents:
+          additionalProperties:
+            $ref: '#/components/schemas/AgentResult'
+          type: object
+          title: Agents
+      type: object
+      title: BenchmarkResults
+    CacheSettings:
+      properties:
+        tts_phrase_cache:
+          type: boolean
+          title: Tts Phrase Cache
+          default: true
+        response_cache:
+          type: boolean
+          title: Response Cache
+          default: false
+      additionalProperties: false
+      type: object
+      title: CacheSettings
+    Disclosure:
+      properties:
+        external:
+          type: boolean
+          title: External
+        providers:
+          items:
+            type: string
+          type: array
+          title: Providers
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - external
+      - providers
+      - message
+      title: Disclosure
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    Hardware:
+      properties:
+        machine:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Machine
+        system:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: System
+        cpus:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Cpus
+        cpu:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cpu
+        gpu:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Gpu
+        python:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Python
+      type: object
+      title: Hardware
+    KeyCreated:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        prefix:
+          type: string
+          title: Prefix
+        display:
+          type: string
+          title: Display
+          description: 'Safe identifier: vos_<prefix>_****'
+        rpm_limit:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Rpm Limit
+        agent_ids:
+          items:
+            type: string
+          type: array
+          title: Agent Ids
+        allowed_origins:
+          items:
+            type: string
+          type: array
+          title: Allowed Origins
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+        revoked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Revoked At
+        last_used_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Used At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        key:
+          type: string
+          title: Key
+          description: The full key. Shown once; store it now
+      type: object
+      required:
+      - id
+      - name
+      - prefix
+      - display
+      - rpm_limit
+      - agent_ids
+      - allowed_origins
+      - expires_at
+      - revoked_at
+      - last_used_at
+      - created_at
+      - key
+      title: KeyCreated
+    KeyIn:
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+        rpm_limit:
+          anyOf:
+          - type: integer
+            maximum: 1000000.0
+            minimum: 1.0
+          - type: 'null'
+          title: Rpm Limit
+        agent_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 200
+          title: Agent Ids
+        allowed_origins:
+          items:
+            type: string
+            maxLength: 200
+            pattern: ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$
+          type: array
+          maxItems: 20
+          title: Allowed Origins
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+      type: object
+      required:
+      - name
+      title: KeyIn
+    KeyOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        prefix:
+          type: string
+          title: Prefix
+        display:
+          type: string
+          title: Display
+          description: 'Safe identifier: vos_<prefix>_****'
+        rpm_limit:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Rpm Limit
+        agent_ids:
+          items:
+            type: string
+          type: array
+          title: Agent Ids
+        allowed_origins:
+          items:
+            type: string
+          type: array
+          title: Allowed Origins
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+        revoked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Revoked At
+        last_used_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Used At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - name
+      - prefix
+      - display
+      - rpm_limit
+      - agent_ids
+      - allowed_origins
+      - expires_at
+      - revoked_at
+      - last_used_at
+      - created_at
+      title: KeyOut
+    KeyUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Name
+        rpm_limit:
+          anyOf:
+          - type: integer
+            maximum: 1000000.0
+            minimum: 1.0
+          - type: 'null'
+          title: Rpm Limit
+        agent_ids:
+          anyOf:
+          - items:
+              type: string
+              format: uuid
+            type: array
+            maxItems: 200
+          - type: 'null'
+          title: Agent Ids
+        allowed_origins:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 200
+              pattern: ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$
+            type: array
+            maxItems: 20
+          - type: 'null'
+          title: Allowed Origins
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+      type: object
+      title: KeyUpdate
+    LoginRequest:
+      properties:
+        email:
+          type: string
+          maxLength: 320
+          pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          title: Email
+        password:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Password
+      type: object
+      required:
+      - email
+      - password
+      title: LoginRequest
+    Overview:
+      properties:
+        days:
+          type: integer
+          title: Days
+        sessions:
+          type: integer
+          title: Sessions
+        minutes:
+          type: number
+          title: Minutes
+        turns:
+          type: integer
+          title: Turns
+        interruption_rate:
+          type: number
+          title: Interruption Rate
+        error_sessions:
+          type: integer
+          title: Error Sessions
+        external_sessions:
+          type: integer
+          title: External Sessions
+          description: Sessions that used an external provider
+        response_ms_avg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms Avg
+        response_ms_p50:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms P50
+        response_ms_p95:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms P95
+        stages:
+          $ref: '#/components/schemas/StageLatency'
+        cost_usd:
+          type: number
+          title: Cost Usd
+          description: Estimated from provider list prices, costed sessions only
+        costed_sessions:
+          type: integer
+          title: Costed Sessions
+        cost_per_session_usd:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Per Session Usd
+        savings_usd:
+          type: number
+          title: Savings Usd
+          description: What the phrase and response caches avoided, at list price
+        llm_tokens:
+          type: integer
+          title: Llm Tokens
+        tts_characters_cached:
+          type: integer
+          title: Tts Characters Cached
+        response_cache_hits:
+          type: integer
+          title: Response Cache Hits
+        previous:
+          additionalProperties:
+            type: number
+          type: object
+          title: Previous
+        series:
+          items:
+            $ref: '#/components/schemas/Point'
+          type: array
+          title: Series
+        by_agent:
+          items:
+            $ref: '#/components/schemas/AgentBreakdown'
+          type: array
+          title: By Agent
+      type: object
+      required:
+      - days
+      - sessions
+      - minutes
+      - turns
+      - interruption_rate
+      - error_sessions
+      - external_sessions
+      - response_ms_avg
+      - response_ms_p50
+      - response_ms_p95
+      - stages
+      - cost_usd
+      - costed_sessions
+      - cost_per_session_usd
+      - savings_usd
+      - llm_tokens
+      - tts_characters_cached
+      - response_cache_hits
+      - previous
+      - series
+      - by_agent
+      title: Overview
+    Page_AuditOut_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AuditOut'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+          description: Pass as ?cursor= to fetch the next page
+      type: object
+      required:
+      - items
+      title: Page[AuditOut]
+    Page_SessionOut_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/SessionOut'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+          description: Pass as ?cursor= to fetch the next page
+      type: object
+      required:
+      - items
+      title: Page[SessionOut]
+    PasswordChange:
+      properties:
+        current_password:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Current Password
+        new_password:
+          type: string
+          maxLength: 256
+          minLength: 10
+          title: New Password
+      type: object
+      required:
+      - current_password
+      - new_password
+      title: PasswordChange
+    Point:
+      properties:
+        t:
+          type: string
+          format: date-time
+          title: T
+        sessions:
+          type: integer
+          title: Sessions
+        minutes:
+          type: number
+          title: Minutes
+        response_ms_avg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms Avg
+        cost_usd:
+          type: number
+          title: Cost Usd
+      type: object
+      required:
+      - t
+      - sessions
+      - minutes
+      - response_ms_avg
+      - cost_usd
+      title: Point
+    Price:
+      properties:
+        per_audio_minute:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: 'null'
+          title: Per Audio Minute
+          description: STT, USD per minute
+        per_million_input_tokens:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: 'null'
+          title: Per Million Input Tokens
+        per_million_output_tokens:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: 'null'
+          title: Per Million Output Tokens
+        per_million_characters:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: 'null'
+          title: Per Million Characters
+          description: TTS
+      additionalProperties: false
+      type: object
+      title: Price
+      description: List prices used to estimate cost. Missing means "not reported", never zero.
+    PrivacySettings:
+      properties:
+        transcript_retention_days:
+          type: integer
+          maximum: 3650.0
+          minimum: 0.0
+          title: Transcript Retention Days
+          description: '0: never stored'
+          default: 30
+        redact_pii:
+          type: boolean
+          title: Redact Pii
+          default: true
+        store_audio:
+          type: boolean
+          title: Store Audio
+          default: false
+      additionalProperties: false
+      type: object
+      title: PrivacySettings
+    ProviderIn:
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+        stage:
+          type: string
+          enum:
+          - stt
+          - llm
+          - tts
+          title: Stage
+        adapter:
+          type: string
+          enum:
+          - openai_compatible
+          - deepgram
+          - sarvam
+          - anthropic
+          - elevenlabs
+          - cartesia
+          - mock
+          title: Adapter
+        base_url:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Base Url
+        model:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Model
+        voice:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Voice
+        language:
+          anyOf:
+          - type: string
+            maxLength: 16
+          - type: 'null'
+          title: Language
+        api_key:
+          anyOf:
+          - type: string
+            maxLength: 4000
+          - type: 'null'
+          title: Api Key
+          description: Write-only; sealed at rest
+        external:
+          type: boolean
+          title: External
+          description: Mark as external even if the URL looks private (never the reverse)
+          default: false
+        timeout_s:
+          type: number
+          maximum: 120.0
+          exclusiveMinimum: 0.0
+          title: Timeout S
+          default: 15.0
+        price:
+          $ref: '#/components/schemas/Price'
+          default: {}
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+      type: object
+      required:
+      - name
+      - stage
+      - adapter
+      title: ProviderIn
+    ProviderOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        stage:
+          type: string
+          title: Stage
+        adapter:
+          type: string
+          title: Adapter
+        base_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Base Url
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        voice:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Voice
+        language:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+        has_api_key:
+          type: boolean
+          title: Has Api Key
+        key_hint:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Key Hint
+        external:
+          type: boolean
+          title: External
+          description: Audio or text leaves your infrastructure
+        self_hosted:
+          type: boolean
+          title: Self Hosted
+        timeout_s:
+          type: number
+          title: Timeout S
+        price:
+          $ref: '#/components/schemas/Price'
+        enabled:
+          type: boolean
+          title: Enabled
+        used_by:
+          type: integer
+          title: Used By
+          description: Agents that use this provider
+          default: 0
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - stage
+      - adapter
+      - base_url
+      - model
+      - voice
+      - language
+      - has_api_key
+      - key_hint
+      - external
+      - self_hosted
+      - timeout_s
+      - price
+      - enabled
+      - created_at
+      - updated_at
+      title: ProviderOut
+    ProviderRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        adapter:
+          type: string
+          title: Adapter
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        external:
+          type: boolean
+          title: External
+      type: object
+      required:
+      - id
+      - name
+      - adapter
+      - model
+      - external
+      title: ProviderRef
+    ProviderTest:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+        latency_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Latency Ms
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - ok
+      - message
+      title: ProviderTest
+    ProviderUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Name
+        base_url:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Base Url
+        model:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Model
+        voice:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Voice
+        language:
+          anyOf:
+          - type: string
+            maxLength: 16
+          - type: 'null'
+          title: Language
+        api_key:
+          anyOf:
+          - type: string
+            maxLength: 4000
+          - type: 'null'
+          title: Api Key
+        clear_api_key:
+          type: boolean
+          title: Clear Api Key
+          default: false
+        external:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: External
+        timeout_s:
+          anyOf:
+          - type: number
+            maximum: 120.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Timeout S
+        price:
+          anyOf:
+          - $ref: '#/components/schemas/Price'
+          - type: 'null'
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+      type: object
+      title: ProviderUpdate
+    RuntimeProbe:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+        status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+        sessions:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Sessions
+        capacity:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Capacity
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - ok
+      title: RuntimeProbe
+      description: The voice runtime as the API sees it on the private network.
+    SessionDetail:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        agent_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Agent Id
+        agent_name:
+          type: string
+          title: Agent Name
+        agent_version:
+          type: integer
+          title: Agent Version
+        transport:
+          type: string
+          title: Transport
+        subject:
+          type: string
+          title: Subject
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          type: string
+          format: date-time
+          title: Ended At
+        duration_s:
+          type: number
+          title: Duration S
+        end_reason:
+          type: string
+          title: End Reason
+        external_providers:
+          items:
+            type: string
+          type: array
+          title: External Providers
+        turn_count:
+          type: integer
+          title: Turn Count
+        interruptions:
+          type: integer
+          title: Interruptions
+        response_ms_p50:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms P50
+        response_ms_max:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms Max
+        cost_total_usd:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Total Usd
+          description: Null when a provider did not report usage or price
+        cost_status:
+          type: string
+          title: Cost Status
+        savings_usd:
+          type: number
+          title: Savings Usd
+        error_count:
+          type: integer
+          title: Error Count
+        transcript_stored:
+          type: boolean
+          title: Transcript Stored
+        usage:
+          additionalProperties: true
+          type: object
+          title: Usage
+        self_hosted_stages:
+          items:
+            type: string
+          type: array
+          title: Self Hosted Stages
+          description: Stages that ran on your own servers and so have no per-call price
+        cost_stt_usd:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Stt Usd
+        cost_llm_usd:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Llm Usd
+        cost_tts_usd:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Tts Usd
+        errors:
+          items:
+            type: string
+          type: array
+          title: Errors
+        transcript_expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Transcript Expires At
+        turns:
+          items:
+            $ref: '#/components/schemas/TurnOut'
+          type: array
+          title: Turns
+      type: object
+      required:
+      - id
+      - agent_id
+      - agent_name
+      - agent_version
+      - transport
+      - subject
+      - started_at
+      - ended_at
+      - duration_s
+      - end_reason
+      - external_providers
+      - turn_count
+      - interruptions
+      - response_ms_p50
+      - response_ms_max
+      - cost_total_usd
+      - cost_status
+      - savings_usd
+      - error_count
+      - transcript_stored
+      - usage
+      - self_hosted_stages
+      - cost_stt_usd
+      - cost_llm_usd
+      - cost_tts_usd
+      - errors
+      - transcript_expires_at
+      - turns
+      title: SessionDetail
+    SessionOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        agent_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Agent Id
+        agent_name:
+          type: string
+          title: Agent Name
+        agent_version:
+          type: integer
+          title: Agent Version
+        transport:
+          type: string
+          title: Transport
+        subject:
+          type: string
+          title: Subject
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          type: string
+          format: date-time
+          title: Ended At
+        duration_s:
+          type: number
+          title: Duration S
+        end_reason:
+          type: string
+          title: End Reason
+        external_providers:
+          items:
+            type: string
+          type: array
+          title: External Providers
+        turn_count:
+          type: integer
+          title: Turn Count
+        interruptions:
+          type: integer
+          title: Interruptions
+        response_ms_p50:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms P50
+        response_ms_max:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms Max
+        cost_total_usd:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Total Usd
+          description: Null when a provider did not report usage or price
+        cost_status:
+          type: string
+          title: Cost Status
+        savings_usd:
+          type: number
+          title: Savings Usd
+        error_count:
+          type: integer
+          title: Error Count
+        transcript_stored:
+          type: boolean
+          title: Transcript Stored
+      type: object
+      required:
+      - id
+      - agent_id
+      - agent_name
+      - agent_version
+      - transport
+      - subject
+      - started_at
+      - ended_at
+      - duration_s
+      - end_reason
+      - external_providers
+      - turn_count
+      - interruptions
+      - response_ms_p50
+      - response_ms_max
+      - cost_total_usd
+      - cost_status
+      - savings_usd
+      - error_count
+      - transcript_stored
+      title: SessionOut
+    SessionStart:
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+          title: Agent Id
+      type: object
+      required:
+      - agent_id
+      title: SessionStart
+    SessionTicket:
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          title: Session Id
+        token:
+          type: string
+          title: Token
+        expires_in_s:
+          type: integer
+          title: Expires In S
+        websocket_url:
+          type: string
+          title: Websocket Url
+        offer_url:
+          type: string
+          title: Offer Url
+        ice_url:
+          type: string
+          title: Ice Url
+        agent:
+          additionalProperties:
+            type: string
+          type: object
+          title: Agent
+        disclosure:
+          $ref: '#/components/schemas/Disclosure'
+      type: object
+      required:
+      - session_id
+      - token
+      - expires_in_s
+      - websocket_url
+      - offer_url
+      - ice_url
+      - agent
+      - disclosure
+      title: SessionTicket
+      description: Everything a client needs to connect, valid for a minute and one session.
+    SignInOut:
+      properties:
+        user:
+          $ref: '#/components/schemas/UserOut'
+        session_token:
+          type: string
+          title: Session Token
+          description: Bearer token for API clients; browsers use the cookie
+        expires_in_s:
+          type: integer
+          title: Expires In S
+      type: object
+      required:
+      - user
+      - session_token
+      - expires_in_s
+      title: SignInOut
+    StageAverages:
+      properties:
+        endpoint_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Endpoint Ms
+        stt_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Stt Ms
+        llm_first_token_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Llm First Token Ms
+        tts_first_audio_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Tts First Audio Ms
+      type: object
+      title: StageAverages
+    StageLatency:
+      properties:
+        endpoint_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Endpoint Ms
+          description: End of speech to the turn being declared over
+        stt_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Stt Ms
+        llm_first_token_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Llm First Token Ms
+        tts_first_audio_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Tts First Audio Ms
+      type: object
+      required:
+      - endpoint_ms
+      - stt_ms
+      - llm_first_token_ms
+      - tts_first_audio_ms
+      title: StageLatency
+      description: Average milliseconds per stage across the period's turns.
+    SystemInfo:
+      properties:
+        version:
+          type: string
+          title: Version
+        environment:
+          type: string
+          title: Environment
+        cloud:
+          type: string
+          title: Cloud
+        key_mode:
+          type: string
+          title: Key Mode
+        storage:
+          type: string
+          title: Storage
+        cache_backend:
+          type: string
+          title: Cache Backend
+        runtime_url:
+          type: string
+          title: Runtime Url
+        runtime:
+          $ref: '#/components/schemas/RuntimeProbe'
+        providers:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Providers
+        external_providers:
+          type: integer
+          title: External Providers
+        agents:
+          type: integer
+          title: Agents
+        active_keys:
+          type: integer
+          title: Active Keys
+        checks:
+          additionalProperties: true
+          type: object
+          title: Checks
+      type: object
+      required:
+      - version
+      - environment
+      - cloud
+      - key_mode
+      - storage
+      - cache_backend
+      - runtime_url
+      - runtime
+      - providers
+      - external_providers
+      - agents
+      - active_keys
+      - checks
+      title: SystemInfo
+    TemplateOut:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        language:
+          type: string
+          title: Language
+      type: object
+      required:
+      - id
+      - name
+      - description
+      - language
+      title: TemplateOut
+    ToolSpec:
+      properties:
+        name:
+          type: string
+          enum:
+          - get_current_time
+          - end_conversation
+          - faq_lookup
+          - http_webhook
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Url
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: ToolSpec
+    TurnOut:
+      properties:
+        index:
+          type: integer
+          title: Index
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        user_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: User Text
+        agent_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent Text
+        interrupted:
+          type: boolean
+          title: Interrupted
+        user_speech_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: User Speech Ms
+        endpoint_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Endpoint Ms
+        stt_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Stt Ms
+        llm_first_token_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Llm First Token Ms
+        tts_first_audio_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Tts First Audio Ms
+        response_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Response Ms
+        llm_model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Llm Model
+        llm_routed_small:
+          type: boolean
+          title: Llm Routed Small
+        response_cache_hit:
+          type: boolean
+          title: Response Cache Hit
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - index
+      - started_at
+      - user_text
+      - agent_text
+      - interrupted
+      - user_speech_ms
+      - endpoint_ms
+      - stt_ms
+      - llm_first_token_ms
+      - tts_first_audio_ms
+      - response_ms
+      - llm_model
+      - llm_routed_small
+      - response_cache_hit
+      - error
+      title: TurnOut
+    TurnSettings:
+      properties:
+        mode:
+          type: string
+          enum:
+          - smart
+          - vad
+          title: Mode
+          default: smart
+        vad_stop_secs:
+          type: number
+          maximum: 3.0
+          minimum: 0.1
+          title: Vad Stop Secs
+          default: 0.6
+        allow_interruptions:
+          type: boolean
+          title: Allow Interruptions
+          default: true
+        interruption_min_words:
+          type: integer
+          maximum: 10.0
+          minimum: 0.0
+          title: Interruption Min Words
+          default: 1
+        transcript_wait_s:
+          type: number
+          maximum: 30.0
+          minimum: 1.0
+          title: Transcript Wait S
+          default: 15.0
+      additionalProperties: false
+      type: object
+      title: TurnSettings
+    UserCreate:
+      properties:
+        email:
+          type: string
+          maxLength: 320
+          pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          title: Email
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        role:
+          type: string
+          enum:
+          - owner
+          - admin
+          - viewer
+          title: Role
+          default: viewer
+        password:
+          type: string
+          maxLength: 256
+          minLength: 10
+          title: Password
+      type: object
+      required:
+      - email
+      - name
+      - password
+      title: UserCreate
+    UserOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        email:
+          type: string
+          title: Email
+        name:
+          type: string
+          title: Name
+        role:
+          type: string
+          title: Role
+        disabled:
+          type: boolean
+          title: Disabled
+        last_login_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Login At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - email
+      - name
+      - role
+      - disabled
+      - last_login_at
+      - created_at
+      title: UserOut
+    UserUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 200
+            minLength: 1
+          - type: 'null'
+          title: Name
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - owner
+            - admin
+            - viewer
+          - type: 'null'
+          title: Role
+        disabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Disabled
+      type: object
+      title: UserUpdate
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+servers:
+- url: http://localhost:4530
+  description: Local (make up)
