@@ -175,15 +175,18 @@ class RuntimeSettings(_Base):
     allowed_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:4510"]
     )
-    # ICE servers handed to aiortc and to browsers: "turn:host:port" URLs.
+    # ICE servers handed to browsers: "turn:host:port" URLs they can reach.
     ice_urls: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # The same TURN server as the runtime itself reaches it (a private address); empty
+    # means the browser URLs, which is right when both sides see the same address.
+    server_ice_urls: Annotated[list[str], NoDecode] = Field(default_factory=list)
     turn_username: str = ""
     turn_password: str = ""
     # Seconds an agent config stays cached in the runtime (admin edits apply after it).
     agent_cache_ttl_s: float = 5.0
     report_timeout_s: float = 10.0
 
-    @field_validator("allowed_origins", "ice_urls", mode="before")
+    @field_validator("allowed_origins", "ice_urls", "server_ice_urls", mode="before")
     @classmethod
     def _lists(cls, v: object) -> object:
         return _split(v)

@@ -145,21 +145,26 @@ def create_app(
     sessions = Sessions(settings)
     shared = SessionShared()
 
-    def ice(label: str) -> list[dict[str, Any]]:
-        if not settings.ice_urls:
+    def ice(label: str, urls: list[str] | None = None) -> list[dict[str, Any]]:
+        urls = urls or settings.ice_urls
+        if not urls:
             return []
         user, cred = (
             turn_credentials(settings.turn_password, label=label)
             if settings.turn_password
             else ("", "")
         )
-        return [{"urls": settings.ice_urls, "username": user, "credential": cred}]
+        return [{"urls": urls, "username": user, "credential": cred}]
 
-    server_ice = [
-        RTCIceServer(urls=s["urls"], username=s["username"], credential=s["credential"])
-        for s in ice("runtime")
-    ]
-    webrtc = SmallWebRTCRequestHandler(ice_servers=server_ice or None)
+    def server_ice() -> list[RTCIceServer] | None:
+        """The runtime's own TURN credentials, minted fresh for each offer (they expire)."""
+        servers = [
+            RTCIceServer(urls=s["urls"], username=s["username"], credential=s["credential"])
+            for s in ice("runtime", settings.server_ice_urls)
+        ]
+        return servers or None
+
+    webrtc = SmallWebRTCRequestHandler(ice_servers=server_ice())
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -266,6 +271,7 @@ def create_app(
             )
 
         try:
+            webrtc._ice_servers = server_ice()  # fresh TURN credentials for this connection
             answer = await webrtc.handle_web_request(req, on_connection)
         except Exception:
             sessions.release(claims.session_id)
@@ -295,19 +301,31 @@ def create_app(
         return {"iceServers": ice(claims.session_id[:8])}
 
     # ── WebSocket ───────────────────────────────────────────────────────────────────
+    async def deny(websocket: WebSocket, status: int, code: str, message: str) -> None:
+        """Refuse the handshake with the real status and reason (busy is 503, not 403).
+
+        Closing before ``accept`` would reach the client as a bare 403 whatever the cause,
+        so the HTTP denial-response extension is used when the server supports it, and a
+        close code of 4000 + status otherwise.
+        """
+        REJECTED.labels(code).inc()
+        if "websocket.http.response" in websocket.scope.get("extensions", {}):
+            body = {"error": {"code": code, "message": message, "type": "session_error"}}
+            await websocket.send_denial_response(JSONResponse(body, status_code=status))
+        else:
+            await websocket.close(code=4000 + status, reason=code)
+
     @app.websocket("/ws")
     async def ws(websocket: WebSocket, token: str | None = Query(None)) -> None:
         origin = websocket.headers.get("origin")
         if origin and origin not in settings.allowed_origins:
-            REJECTED.labels("origin").inc()
-            await websocket.close(code=4403, reason="origin not allowed")
+            await deny(websocket, 403, "origin", "This site may not connect to the runtime")
             return
         try:
             claims = sessions.admit(token, origin, "websocket")
             agent = await load_agent(claims)
         except RejectedError as exc:
-            REJECTED.labels(exc.code).inc()
-            await websocket.close(code=4000 + exc.status, reason=exc.code)
+            await deny(websocket, exc.status, exc.code, exc.message)
             return
         await websocket.accept()
         transport = FastAPIWebsocketTransport(
