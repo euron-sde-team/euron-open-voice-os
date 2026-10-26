@@ -135,38 +135,40 @@ async def converse(
                 result.closed_code = exc.code
 
         receiver = asyncio.create_task(receive())
-        # Let the greeting finish first (as a polite caller would), so its audio is never
-        # mistaken for the answer. Agents without a greeting just wait greeting_timeout_s.
-        quiet_frame = _audio_message(silence(FRAME_MS / 1000))
-        deadline = time.monotonic() + greeting_timeout_s
-        while time.monotonic() < deadline and not greeted.is_set() and not receiver.done():
-            await ws.send(quiet_frame)
-            await asyncio.sleep(FRAME_MS / 1000)
-        await asyncio.sleep(0.3)
-        step = SAMPLE_RATE * 2 * FRAME_MS // 1000
-        for pcm in utterances:
-            started = time.monotonic()
-            result.speech_started.append(started)
-            for i in range(0, len(pcm), step):
-                await ws.send(_audio_message(pcm[i : i + step]))
-                # Real time: the runtime's VAD and turn detection see natural pacing.
-                await asyncio.sleep(
-                    max(0.0, started + (i + step) / (SAMPLE_RATE * 2) - time.monotonic())
-                )
-            speech_ended.append(time.monotonic())
-            result.speech_ended.append(speech_ended[-1])
-            quiet = silence(gap_s)
-            for i in range(0, len(quiet), step):
-                await ws.send(_audio_message(quiet[i : i + step]))
+        # The agent may hang up first (its end_conversation tool): that ends the call.
+        with contextlib.suppress(websockets.ConnectionClosed):
+            # Let the greeting finish first (as a polite caller would), so its audio is never
+            # mistaken for the answer. Agents without a greeting just wait greeting_timeout_s.
+            quiet_frame = _audio_message(silence(FRAME_MS / 1000))
+            deadline = time.monotonic() + greeting_timeout_s
+            while time.monotonic() < deadline and not greeted.is_set() and not receiver.done():
+                await ws.send(quiet_frame)
                 await asyncio.sleep(FRAME_MS / 1000)
-        deadline = time.monotonic() + (reply_timeout_s if utterances else 0.0)
-        while time.monotonic() < deadline and not answered.is_set() and not receiver.done():
-            await ws.send(quiet_frame)
-            await asyncio.sleep(FRAME_MS / 1000)
-        deadline = time.monotonic() + tail_s
-        while time.monotonic() < deadline and not receiver.done():
-            await ws.send(quiet_frame)
-            await asyncio.sleep(FRAME_MS / 1000)
+            await asyncio.sleep(0.3)
+            step = SAMPLE_RATE * 2 * FRAME_MS // 1000
+            for pcm in utterances:
+                started = time.monotonic()
+                result.speech_started.append(started)
+                for i in range(0, len(pcm), step):
+                    await ws.send(_audio_message(pcm[i : i + step]))
+                    # Real time: the runtime's VAD and turn detection see natural pacing.
+                    await asyncio.sleep(
+                        max(0.0, started + (i + step) / (SAMPLE_RATE * 2) - time.monotonic())
+                    )
+                speech_ended.append(time.monotonic())
+                result.speech_ended.append(speech_ended[-1])
+                quiet = silence(gap_s)
+                for i in range(0, len(quiet), step):
+                    await ws.send(_audio_message(quiet[i : i + step]))
+                    await asyncio.sleep(FRAME_MS / 1000)
+            deadline = time.monotonic() + (reply_timeout_s if utterances else 0.0)
+            while time.monotonic() < deadline and not answered.is_set() and not receiver.done():
+                await ws.send(quiet_frame)
+                await asyncio.sleep(FRAME_MS / 1000)
+            deadline = time.monotonic() + tail_s
+            while time.monotonic() < deadline and not receiver.done():
+                await ws.send(quiet_frame)
+                await asyncio.sleep(FRAME_MS / 1000)
         await ws.close()
         await asyncio.wait_for(receiver, timeout=5)
     return result

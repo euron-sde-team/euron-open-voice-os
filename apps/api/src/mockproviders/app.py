@@ -106,14 +106,30 @@ def _answer(
     )
     last = messages[-1] if messages else {}
     if last.get("role") == "tool":
+        called = next(
+            (
+                c.get("function", {}).get("name")
+                for m in reversed(messages)
+                if m.get("role") == "assistant"
+                for c in m.get("tool_calls") or []
+            ),
+            None,
+        )
+        if called == "end_conversation":
+            return "Goodbye!", None
+        if called == "faq_lookup":
+            answers = json.loads(_text(last.get("content")) or "{}").get("answers") or ["nothing"]
+            return f"Here is what I found: {answers[0]}", None
         return f"It is {_tool_result(_text(last.get('content')))}.", None
     names = {t.get("function", {}).get("name") for t in tools or []}
     if "get_current_time" in names and re.search(
         r"\b(what time is it|the time now|current time)\b", last_user, re.I
     ):
         return "", {"name": "get_current_time", "arguments": "{}"}
+    if "faq_lookup" in names and re.search(r"\b(refund|policy|parking)\b", last_user, re.I):
+        return "", {"name": "faq_lookup", "arguments": json.dumps({"question": last_user})}
     if "end_conversation" in names and re.search(r"\b(bye|goodbye)\b", last_user, re.I):
-        return "Thank you for calling. Goodbye!", None
+        return "", {"name": "end_conversation", "arguments": "{}"}
     for pattern, reply in _RULES:
         if pattern.search(last_user):
             return reply, None
