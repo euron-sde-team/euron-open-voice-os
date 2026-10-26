@@ -206,6 +206,8 @@ def test_private_hosts() -> None:
 def test_response_cache_keys_bind_agent_version_and_normalized_text() -> None:
     a = agent(provider("stt"), provider("llm"), provider("tts"))
     assert normalize("  What TIME do you open?! ") == "what time do you open"
+    assert normalize("नमस्ते! आप कैसे हैं?") == "नमस्ते आप कैसे हैं"
+    assert normalize("हम दस बजे खुलते हैं।") == "हम दस बजे खुलते हैं"
     k = ResponseCache.key(a, "What time do you open?")
     assert k == ResponseCache.key(a, "what time do you open")
     assert k != ResponseCache.key(a.model_copy(update={"version": 4}), "what time do you open")
@@ -221,3 +223,20 @@ def test_response_cache_is_bounded_and_expires() -> None:
     short = ResponseCache(ttl_s=-1)
     short.put("x", "y")
     assert short.get("x") is None
+
+
+# ── FAQ lookup ───────────────────────────────────────────────────────────────────────
+def test_faq_search_matches_word_forms_and_ignores_question_words() -> None:
+    pytest.importorskip("pipecat")
+    from voiceos.runtime.tools import faq_search
+
+    faq = [
+        "Refunds are issued within five working days.",
+        "Parking is free after six in the evening.",
+        "हम रविवार को दस बजे खुलते हैं।",
+    ]
+    assert faq_search(faq, "What is your refund policy?") == [faq[0]]
+    assert faq_search(faq, "Where do I park? Is parking free?")[0] == faq[1]
+    assert faq_search(faq, "रविवार को कब खुलते हैं") == [faq[2]]
+    assert faq_search(faq, "What is the?") == []
+    assert faq_search(faq, "quantum physics") == []

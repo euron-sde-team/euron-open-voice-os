@@ -2,8 +2,11 @@
  * Curated README screenshots and tour frames from a freshly seeded stack.
  *
  *   make up && make demo
- *   cd scripts/qa && QA_BASE=http://localhost:4310 node screenshots.mjs
+ *   cd scripts/qa && node screenshots.mjs
  *   ../../scripts/qa/make-tour.sh        (stitches the frames into docs/assets/tour.gif)
+ *
+ * The Talk captures are a real conversation: Chromium's fake microphone plays the
+ * committed question (e2e/audio/en-booking.wav) and the agent answers through the stack.
  *
  * Writes docs/assets/screenshots/NN-name.png and scripts/qa/output/tour/NN.png.
  */
@@ -14,11 +17,12 @@ import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const BASE = process.env.QA_BASE ?? "http://localhost:4310";
-const EMAIL = process.env.QA_EMAIL ?? "admin@contextforge.local";
-const PASSWORD = process.env.QA_PASSWORD ?? process.env.CF_DEMO_PASSWORD ?? "ForgeDemo2026";
+const BASE = process.env.QA_BASE ?? "http://localhost:4510";
+const EMAIL = process.env.QA_EMAIL ?? "admin@voiceos.local";
+const PASSWORD = process.env.QA_PASSWORD ?? process.env.VOS_DEMO_PASSWORD ?? "";
 const SHOTS = path.resolve(HERE, "../../docs/assets/screenshots");
 const TOUR = path.resolve(HERE, "output/tour");
+const MIC = path.resolve(HERE, "../../e2e/audio/en-booking.wav");
 const CHROME = process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH) ? process.env.CHROME_PATH : undefined;
 const DESKTOP = { width: 1440, height: 900, deviceScaleFactor: 1 };
 
@@ -40,26 +44,16 @@ async function shot(page, name, { tour = true, fullPage = false } = {}) {
   console.log(`saved ${name}`);
 }
 
-async function choose(page, triggerId, label) {
-  await page.click(`#${triggerId}`);
-  await sleep(200);
-  const options = await page.$$('[role="option"]');
-  for (const o of options) {
-    const text = (await o.evaluate((el) => el.textContent)) ?? "";
-    if (text.trim().startsWith(label)) {
-      await o.click();
-      await sleep(200);
-      return;
-    }
-  }
-  throw new Error(`option ${label} not found in #${triggerId}`);
+async function open(page, url, ms = 1500) {
+  await page.goto(`${BASE}${url}`, { waitUntil: "networkidle2", timeout: 45_000 });
+  await settle(page, ms);
 }
 
-async function clickButton(page, text, { exact = false } = {}) {
+async function clickButton(page, text) {
   const buttons = await page.$$("button");
   for (const b of buttons) {
     const t = ((await b.evaluate((el) => el.textContent)) ?? "").trim();
-    if (exact ? t === text : t.includes(text)) {
+    if (t.includes(text)) {
       await b.click();
       return;
     }
@@ -67,21 +61,32 @@ async function clickButton(page, text, { exact = false } = {}) {
   throw new Error(`button ${text} not found`);
 }
 
-async function optimizeSample(page, label) {
-  await page.goto(`${BASE}/playground`, { waitUntil: "networkidle2" });
-  await settle(page);
-  await choose(page, "sample", label);
-  await settle(page, 800);
-  await clickButton(page, "Optimize", { exact: true });
-  await page.waitForSelector("[aria-live=polite]", { timeout: 20_000 });
-  await settle(page, 900);
+async function waitForText(page, selector, pattern, timeout = 90_000) {
+  await page.waitForFunction(
+    (sel, src) => [...document.querySelectorAll(sel)].some((el) => new RegExp(src).test(el.textContent ?? "")),
+    { timeout, polling: 500 },
+    selector,
+    pattern,
+  );
 }
 
 async function main() {
+  if (!PASSWORD) throw new Error("set QA_PASSWORD or VOS_DEMO_PASSWORD (the demo password in deploy/compose/.env)");
   await mkdir(SHOTS, { recursive: true });
   await mkdir(TOUR, { recursive: true });
-  const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--no-sandbox"] });
+  const browser = await puppeteer.launch({
+    executablePath: CHROME,
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--use-fake-ui-for-media-stream",
+      "--use-fake-device-for-media-stream",
+      `--use-file-for-fake-audio-capture=${MIC}`,
+      "--autoplay-policy=no-user-gesture-required",
+    ],
+  });
   const ctx = await browser.createBrowserContext();
+  await ctx.overridePermissions(BASE, ["microphone"]);
   const page = await ctx.newPage();
   await page.setViewport(DESKTOP);
   await page.evaluateOnNewDocument(() => {
@@ -90,59 +95,58 @@ async function main() {
     } catch {}
   });
 
-  await page.goto(`${BASE}/login`, { waitUntil: "networkidle2" });
-  await sleep(600);
-  await shot(page, "00-sign-in", { tour: false });
+  await open(page, "/login", 800);
+  await shot(page, "14-login", { tour: false });
   await page.type("#email", EMAIL);
   await page.type("#password", PASSWORD);
   await Promise.all([page.waitForNavigation({ waitUntil: "networkidle2" }), page.click("button[type=submit]")]);
 
-  await page.goto(`${BASE}/`, { waitUntil: "networkidle2" });
-  await settle(page, 1800);
+  const agents = await page.evaluate(async () => (await (await fetch("/api/v1/agents")).json()) ?? []);
+  const frontDesk = agents.find((a) => a.name === "Front desk") ?? agents[0];
+
+  await open(page, "/", 2500);
   await shot(page, "01-overview");
 
-  // A coding agent stuck on a failing test: before and after, side by side.
-  await optimizeSample(page, "Coding agent, 8 attempts");
-  await shot(page, "02-playground-coding");
+  // A live conversation, captured while the agent answers.
+  await open(page, `/talk?agent=${frontDesk.id}`);
+  await clickButton(page, "WebSocket");
+  await clickButton(page, "Start talking");
+  await waitForText(page, '[data-who="agent"]', "answered in");
+  await sleep(600);
+  await shot(page, "02-talk");
+  await clickButton(page, "End conversation");
+  await sleep(4000);
 
-  // The pipeline trace of the same run.
-  await clickButton(page, "Trace", { exact: true });
-  await settle(page, 500);
-  await shot(page, "03-playground-trace");
+  const latest = await page.evaluate(async () => (await (await fetch("/api/v1/sessions?limit=1")).json()).items?.[0]?.id);
+  await open(page, `/sessions?session=${latest}`, 2500);
+  await shot(page, "03-session-detail");
 
-  // A noisy retrieval: duplicates merged, noise dropped, every citation mapped.
-  await optimizeSample(page, "RAG, 108 retrieved chunks");
-  await clickButton(page, "Documents", { exact: true });
-  await settle(page, 500);
-  await shot(page, "04-playground-citations");
+  await open(page, "/sessions");
+  await shot(page, "04-sessions");
 
-  await page.goto(`${BASE}/runs`, { waitUntil: "networkidle2" });
-  await settle(page);
-  await shot(page, "05-runs");
+  await open(page, "/agents");
+  await shot(page, "05-agents");
 
-  await page.click("table tbody tr");
-  await settle(page, 1000);
-  await shot(page, "06-run-detail");
+  await clickButton(page, "New agent");
+  await sleep(900);
+  await shot(page, "06-new-agent", { tour: true });
+  await page.keyboard.press("Escape");
+  await sleep(400);
 
-  await page.goto(`${BASE}/benchmarks`, { waitUntil: "networkidle2" });
-  await settle(page, 1500);
-  await shot(page, "07-benchmarks");
+  await open(page, `/agents/${frontDesk.id}`);
+  await shot(page, "07-agent-editor");
 
-  await page.goto(`${BASE}/profiles`, { waitUntil: "networkidle2" });
-  await settle(page);
-  await shot(page, "08-profiles");
+  await open(page, "/providers");
+  await shot(page, "08-providers");
 
-  await page.goto(`${BASE}/upstreams`, { waitUntil: "networkidle2" });
-  await settle(page);
-  await shot(page, "09-upstreams");
+  await open(page, "/benchmarks", 2000);
+  await shot(page, "09-benchmarks");
 
-  await page.goto(`${BASE}/integrations`, { waitUntil: "networkidle2" });
-  await settle(page);
+  await open(page, "/integrations");
   await shot(page, "10-integrations");
 
-  await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2" });
-  await settle(page);
-  await shot(page, "11-jobs", { tour: false });
+  await open(page, "/keys");
+  await shot(page, "11-keys", { tour: false });
 
   // Dark mode: a second page in the same signed-in context, so its init script sets dark.
   const dark = await ctx.newPage();
@@ -152,7 +156,7 @@ async function main() {
       localStorage.setItem("theme", "dark");
     } catch {}
   });
-  await optimizeSample(dark, "Support thread, 166 messages");
+  await open(dark, `/sessions?session=${latest}`, 2500);
   await shot(dark, "12-dark-mode");
 
   // Phone width.
@@ -163,8 +167,7 @@ async function main() {
       localStorage.setItem("theme", "light");
     } catch {}
   });
-  await phone.goto(`${BASE}/`, { waitUntil: "networkidle2" });
-  await settle(phone, 1800);
+  await open(phone, "/", 2500);
   await phone.screenshot({ path: path.join(SHOTS, "13-mobile.png") });
   console.log("saved 13-mobile");
 

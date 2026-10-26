@@ -79,3 +79,34 @@ async def test_the_runtime_refuses_connections_without_a_valid_token(
 async def test_a_browser_from_another_site_is_refused(stack: Stack, voice: Voice) -> None:
     t = await ticket(stack, voice.agent)
     assert await refused(t["websocket_url"], origin="https://evil.example") in (403, 4403)
+
+
+@pytest.mark.parametrize(
+    "runtime_overrides",
+    [{"ice_urls": ["turn:127.0.0.1:4578?transport=udp"], "turn_password": "t" * 40}],
+)
+async def test_ice_servers_carry_short_lived_turn_credentials(
+    stack: Stack, voice: Voice, runtime_overrides: dict[str, object]
+) -> None:
+    import base64
+    import hashlib
+    import hmac
+    import time
+
+    import httpx
+
+    t = await ticket(stack, voice.agent)
+    async with httpx.AsyncClient() as c:
+        ice = (await c.get(t["ice_url"])).json()["iceServers"]
+        assert (await c.get(f"{stack.runtime_url}/api/ice?token=nope")).status_code == 401
+        offer = await c.post(f"{stack.runtime_url}/api/offer", json={"sdp": "x", "type": "offer"})
+        assert offer.status_code == 401
+        assert offer.json()["error"]["code"] == "missing_token"
+    [server] = ice
+    assert server["urls"] == ["turn:127.0.0.1:4578?transport=udp"]
+    expires = int(server["username"].split(":")[0])
+    assert time.time() < expires <= time.time() + 3601
+    expected = base64.b64encode(
+        hmac.new(b"t" * 40, server["username"].encode(), hashlib.sha1).digest()
+    ).decode()
+    assert server["credential"] == expected

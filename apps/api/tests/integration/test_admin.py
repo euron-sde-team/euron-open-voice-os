@@ -107,17 +107,20 @@ async def test_password_change_signs_other_sessions_out(stack: Stack) -> None:
 async def test_forwarded_for_cannot_dodge_the_login_throttle(stack: Stack) -> None:
     """The test client connects from 127.0.0.1, which uvicorn trusts as a proxy, so this is
     the production shape: the caller forges an X-Forwarded-For value and the trusted proxy
-    appends the real address. Only the right-most untrusted hop counts."""
+    appends the real address. Only the right-most untrusted hop counts.
+
+    The throttle counts per one-minute window, so 41 attempts put at least 21 in one window
+    even when the burst straddles a minute boundary."""
     async with stack.anonymous() as c:
         codes = []
-        for i in range(22):
+        for i in range(41):
             r = await c.post(
                 "/api/v1/auth/login",
                 json={"email": "nobody@example.test", "password": "wrong-password"},
                 headers={"x-forwarded-for": f"203.0.113.{i}, 198.51.100.7"},
             )
             codes.append(r.status_code)
-    assert codes[-1] == 429
+    assert 429 in codes
 
 
 # ── Roles ────────────────────────────────────────────────────────────────────────────
