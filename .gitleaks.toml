@@ -1,7 +1,7 @@
 # gitleaks configuration: the default ruleset plus rules for cloud identifiers
 # that are not secrets on their own but must never appear in a public repo
 # (they map infrastructure and aid targeted attacks).
-title = "euron-open-context-forge"
+title = "euron-open-voice-os"
 
 [extend]
 useDefault = true
