@@ -95,3 +95,15 @@ describe("explain", () => {
     expect(explain(null)).toMatch(/failed/);
   });
 });
+
+describe("rmsLevel", () => {
+  it("is zero for silence and rises with loudness, capped at 1", async () => {
+    const { rmsLevel } = await import("@/features/talk/level-meter");
+    expect(rmsLevel(new Float32Array(512))).toBe(0);
+    const quiet = rmsLevel(new Float32Array(512).fill(0.02));
+    const loud = rmsLevel(new Float32Array(512).fill(0.2));
+    expect(quiet).toBeLessThan(0.1);
+    expect(loud).toBeGreaterThan(0.5);
+    expect(rmsLevel(new Float32Array(512).fill(1))).toBe(1);
+  });
+});
