@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 
 import httpx
@@ -76,13 +77,26 @@ async def test_errors_use_one_envelope_and_never_leak_internals(stack: Stack) ->
 
 
 async def _status_for_upload(stack: Stack, head: bytes, body: bytes) -> int:
-    """The status line the API answers with while the client is still uploading. Over real
-    TCP the server refuses early and closes, so read the answer at the socket level."""
+    """The status line the API answers with while the client is still uploading.
+
+    Over real TCP the server refuses early and closes. Writing the rest of the body after
+    that would make the kernel reset the connection, which can discard the unread answer,
+    so the body goes out in pieces and the answer is read as soon as it arrives."""
     host, port = stack.api_url.removeprefix("http://").split(":")
     reader, writer = await asyncio.open_connection(host, int(port))
     try:
-        writer.write(head + body)
+        writer.write(head)
         await writer.drain()
+        for i in range(0, len(body), 64_000):
+            with contextlib.suppress(TimeoutError):
+                line = await asyncio.wait_for(reader.readline(), timeout=0.05)
+                if line:
+                    return int(line.split()[1])
+            try:
+                writer.write(body[i : i + 64_000])
+                await writer.drain()
+            except (ConnectionError, OSError):
+                break
         line = await asyncio.wait_for(reader.readline(), timeout=10)
     finally:
         writer.close()
