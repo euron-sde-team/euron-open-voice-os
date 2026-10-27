@@ -49,10 +49,18 @@ KOKORO_FILES = {
 ATTEMPTS = 5
 # A connection that sends nothing for this long counts as dropped and is retried.
 READ_TIMEOUT_S = 60
+# A host that trickles (throttled, congested) never trips the timeout, so like curl's
+# --speed-limit a mirror averaging less than this over a window is left for the next one.
+MIN_SPEED_BYTES_S = 100_000
+SPEED_WINDOW_S = 30.0
 
 
 class DownloadError(Exception):
     pass
+
+
+class SlowMirrorError(Exception):
+    """Not an OSError, so it is not retried on the same host: the next mirror is tried."""
 
 
 def retrying(what: str, fn: Callable[[], object], *, delay_s: float = 2.0) -> None:
@@ -71,9 +79,10 @@ def retrying(what: str, fn: Callable[[], object], *, delay_s: float = 2.0) -> No
             time.sleep(wait)
 
 
-def fetch_resumable(url: str, part: Path) -> None:
+def fetch_resumable(url: str, part: Path, min_speed: int = MIN_SPEED_BYTES_S) -> None:
     """Download into ``part``, continuing from its current size, so a retry after a
-    dropped connection does not start a large file over."""
+    dropped connection does not start a large file over. Raises ``SlowMirrorError`` when
+    the host averages less than ``min_speed`` bytes a second over a window (0: no floor)."""
     have = part.stat().st_size if part.exists() else 0
     headers = {"Range": f"bytes={have}-"} if have else {}
     req = urllib.request.Request(url, headers=headers)  # noqa: S310 fixed https URL
@@ -85,8 +94,16 @@ def fetch_resumable(url: str, part: Path) -> None:
         raise
     # 206: the server honoured the range; anything else is the whole file again.
     with resp, part.open("ab" if resp.status == 206 else "wb") as out:
-        for block in iter(lambda: resp.read(1 << 20), b""):
+        window_start, window_bytes = time.monotonic(), 0
+        # read1 returns whatever has arrived, so the speed check runs even on a trickle.
+        for block in iter(lambda: resp.read1(1 << 16), b""):
             out.write(block)
+            window_bytes += len(block)
+            elapsed = time.monotonic() - window_start
+            if elapsed >= SPEED_WINDOW_S:
+                if min_speed and window_bytes / elapsed < min_speed:
+                    raise SlowMirrorError(f"{window_bytes / elapsed / 1000:.0f} kB/s")
+                window_start, window_bytes = time.monotonic(), 0
 
 
 def sha256(path: Path) -> str:
@@ -105,19 +122,30 @@ def fetch_pinned(path: Path, pinned: Pinned, mirrors: list[str]) -> None:
         return
     part = path.with_suffix(path.suffix + ".part")
     sources = [f"{m.rstrip('/')}/{path.name}" for m in mirrors] + list(pinned.mirrors)
-    for url in sources:
-        print(f"kokoro: downloading {path.name} from {url.split('/')[2]}")
-        try:
-            retrying(f"kokoro: {path.name}", functools.partial(fetch_resumable, url, part))
-        except DownloadError as exc:
-            print(f"{exc}; trying the next mirror")
-            continue
-        got = sha256(part)
-        if got == pinned.sha256:
-            part.rename(path)
-            return
-        print(f"kokoro: {path.name} from {url} has checksum {got}; refusing it")
-        part.unlink(missing_ok=True)
+    # First pass skips slow hosts; when every host was slow, the second pass takes whatever
+    # speed it gets, so a slow network still finishes instead of failing.
+    for min_speed in (MIN_SPEED_BYTES_S, 0):
+        slow = False
+        for url in sources:
+            print(f"kokoro: downloading {path.name} from {url.split('/')[2]}")
+            fetch = functools.partial(fetch_resumable, url, part, min_speed)
+            try:
+                retrying(f"kokoro: {path.name}", fetch)
+            except DownloadError as exc:
+                print(f"{exc}; trying the next mirror")
+                continue
+            except SlowMirrorError as exc:
+                print(f"kokoro: {url.split('/')[2]} is slow ({exc}); trying the next mirror")
+                slow = True
+                continue
+            got = sha256(part)
+            if got == pinned.sha256:
+                part.rename(path)
+                return
+            print(f"kokoro: {path.name} from {url} has checksum {got}; refusing it")
+            part.unlink(missing_ok=True)
+        if not slow:
+            break
     raise SystemExit(
         f"kokoro: no mirror served {path.name} intact; see docs/guides/troubleshooting.md"
     )
