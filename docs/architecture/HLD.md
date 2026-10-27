@@ -48,13 +48,17 @@ container installs only what it runs (the `runtime` and `speech` extras).
    providers the call will use, as a sentence to show the caller).
 3. The browser fetches TURN credentials from the runtime's `/api/ice` with the token, then
    connects over WebRTC (`POST /api/offer`) or WebSocket (`/ws`).
-4. The runtime admits the token once (signature, audience, expiry, origin, not yet used,
-   capacity), loads the agent from `GET /internal/agents/{id}` and starts the pipeline.
+4. The runtime checks the token (signature, audience, expiry, origin, capacity), then
+   claims it through `POST /internal/claims/{session_id}`: an atomic insert into
+   `session_claims` in Postgres, so a ticket is used once across every runtime replica (a
+   replay on any replica gets 409 `token_used`). The claim also returns the agent, fresh
+   from the control plane, and the pipeline starts.
 
 ## During a call
 
 `transport in -> STT -> user turn (Silero VAD + turn detection) -> TurnRouter -> LLM ->
-TTS -> transport out`. The turn router answers exact repeats from the response cache or
+TTS -> transport out`. The turn router answers exact repeats of a whole conversation from
+the response cache or
 sends short turns to a smaller model; the TTS replays repeated phrases from the phrase
 cache. A turn recorder observes every frame and measures each stage. See
 [voice-pipeline.md](voice-pipeline.md).
@@ -62,19 +66,23 @@ cache. A turn recorder observes every frame and measures each stage. See
 ## After a call
 
 The runtime posts a `SessionReport` (turns with text and timings, usage, end reason,
-external providers, errors) to `POST /internal/sessions`, retrying three times with
-backoff. The control plane stores it once (the session id is the primary key), computes
-cost from the agent's provider prices, redacts and keeps the words only if the agent's
-retention allows, and upserts the hourly rollup in the same transaction.
+external providers, errors, and the agent configuration the call ran with, provider keys
+removed) to `POST /internal/sessions`, retrying three times with backoff. The control
+plane stores it once (the session id is the primary key), computes cost from the prices in
+that configuration snapshot, redacts and keeps the words only if its retention allows, and
+upserts the hourly rollup in the same transaction. Because the snapshot travels with the
+report, editing or disabling an agent mid-call changes nothing about the stored session.
+When the runtime shuts down (a deploy or scale-in) it cancels live calls, each of which
+still reports everything it measured, and waits for those reports before closing.
 
 ## Caching layers
 
 | Layer | What is cached | Where | Key | TTL and invalidation |
 | --- | --- | --- | --- | --- |
 | Config cache | Resolved agents (providers with opened credentials), SDK key rows | Control plane process memory, single flight per key, at most 10,000 entries | `agent:<id>`, `key:<prefix>` | 5 s TTL. Every provider, agent and key write calls `invalidate()`, which bumps `vos:cfg:version` in the KV store; each process checks the stamp at most once a second and drops its entries when it moved. Without Redis the stamp is per process, exact for one replica. A load that raced an invalidation is returned but not stored |
-| Runtime agent cache | `ResolvedAgent` fetched from `/internal/agents/{id}` | Runtime process memory | agent id | `AGENT_CACHE_TTL_S` (5 s). No invalidation message: an edit reaches new calls within the TTL; calls in progress keep the version they started with |
+| Runtime agent cache | `ResolvedAgent` fetched from `/internal/agents/{id}` | Runtime process memory | agent id | `AGENT_CACHE_TTL_S` (5 s). Not on the admission path: every call's agent comes fresh with its ticket claim (`/internal/claims/{session_id}`, never cached), so an edit reaches the next call as soon as the control plane's config cache is invalidated; calls in progress keep the version they started with |
 | TTS phrase cache | Synthesized audio of short phrases (greetings, confirmations), at most 200 characters each | Runtime process memory, LRU bounded at 64 MB, no single entry above an eighth of it | SHA-256 of provider id, adapter, model, voice and the exact text | Process lifetime with LRU eviction. A voice or model change changes the key, so the wrong audio is never replayed. Hits and the characters they saved are reported per session as savings |
-| Response cache | The agent's answer to an exact repeat of a question | Runtime process memory, LRU of 5,000 entries | SHA-256 of agent id, agent **version** and the normalized question (lowercased, punctuation removed) | 24 h. Any edit bumps the agent version, so old answers are never replayed. Only agents that opt in and have no tools; an answer is stored only after it played without interruption |
+| Response cache | The agent's answer to an exact repeat of a conversation | Runtime process memory, LRU of 5,000 entries | SHA-256 of agent id, agent **version** and the whole normalized conversation so far: every user and assistant message, lowercased, punctuation removed (not the system prompt). An answer is never replayed to a caller who said anything different before the question | 24 h. Any edit bumps the agent version, so old answers are never replayed. Only agents that opt in and have no tools; an answer is stored only after it played without interruption |
 | Rate limits | Sliding-window counters per SDK key and per sign-in IP | Redis (atomic), or per process | `vos:rl:<name>:<window>` | One minute windows |
 | Analytics | Overview aggregates | Postgres `usage_hourly`, written in the report's transaction, plus `Cache-Control: private, max-age=15` on the overview | hour, agent, transport | Exact at write time; a browser may reuse an overview for 15 s |
 | Dashboard | Server state | TanStack Query | per resource (`apps/web/src/lib/query-keys.ts`) | `staleTime` per kind: analytics 15 s, config 30 s, live lists 5 s, static 5 min; mutations invalidate exactly the keys they touched |

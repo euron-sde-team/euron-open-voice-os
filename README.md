@@ -147,7 +147,7 @@ on your own machine, the first agent works before anyone signs up for anything.
 | **Measured per turn** | End of turn, speech to text, LLM first token, TTS first audio, response time, interruptions |
 | **Measured per session** | STT seconds, LLM tokens, TTS characters, cost per stage (nano-USD integers), cache savings |
 | **Privacy** | No stored audio, PII redaction, transcript retention, external-provider disclosure |
-| **Cost optimizer** | Phrase cache for repeated speech, response cache for repeated questions, small-model routing for short turns |
+| **Cost optimizer** | Phrase cache for repeated speech, response cache for repeated conversations (the whole conversation, never just the last question), small-model routing for short turns |
 | **SDK** | SDK keys scoped to agents and website origins; one-minute single-use session tickets |
 | **Infrastructure** | 10 Terraform modules, 3 environments; the full AWS stack (342 resources) applied end to end against Floci |
 | **Tests** | 133 unit (91 API, 42 web), 81 integration through the real runtime, 17 browser end-to-end with a fake microphone, a browser QA sweep |
@@ -218,7 +218,9 @@ on your own machine, the first agent works before anyone signs up for anything.
 
 #### 🔒 Private by default
 - **No audio stored**, anywhere.
-- **Redaction** before anything is written: email, phone, card (Luhn), Aadhaar
+- **No words in logs**: Pipecat's DEBUG output (the LLM context, every spoken sentence)
+  is never logged.
+- **Redaction** before anything is written: email (written or spoken), phone, card (Luhn), Aadhaar
   (Verhoeff), PAN.
 - **Retention** per agent (0 keeps no words), purged by the worker; erase any transcript.
 - **Disclosure**: external providers are named before the call and on the session.
@@ -427,7 +429,7 @@ Step by step: [deploy guide](docs/guides/deploy-aws.md).
 
 | Area | How |
 | --- | --- |
-| Runtime access | No connection without a session ticket: HS256, audience `voiceos-runtime`, 60 s, single use, bound to one agent and, from a browser, one origin |
+| Runtime access | No connection without a session ticket: HS256, audience `voiceos-runtime`, 60 s, single use across every runtime replica, bound to one agent and, from a browser, one origin |
 | SDK keys | `vos_<prefix>_<secret>`, peppered HMAC, shown once, per-key rate limits, agent and origin scopes, revocable |
 | Provider keys | Write-only, sealed (AES-GCM locally, KMS on AWS), never returned or logged; moving a provider to another host needs its key again; metadata and non-HTTP URLs refused |
 | Voice data | No audio stored; transcripts redacted, retained per agent and erasable; external processing disclosed |
@@ -479,7 +481,6 @@ Line coverage of `apps/api/src` from the unit and integration suites together: 9
 - Opt-in session recording to object storage, with consent and expiry
 - A visual flow editor for multi-step agents, and knowledge bases beyond FAQ snippets
 - Mobile SDKs, and a Helm chart next to the Terraform
-- Cross-instance single-use tickets (today a ticket is single use per runtime instance)
 
 Have an idea? [Open a feature request](https://github.com/euron-sde-team/euron-open-voice-os/issues/new/choose).
 

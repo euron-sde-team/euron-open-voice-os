@@ -1,7 +1,8 @@
 # Data model
 
-PostgreSQL 16, one Alembic revision in 0.1.0
-(`apps/api/src/voiceos/migrations/versions/0001_initial_schema.py`). Only the control plane
+PostgreSQL 16, two Alembic revisions in 0.1.0
+(`apps/api/src/voiceos/migrations/versions/0001_initial_schema.py` and
+`0002_session_claims.py`). Only the control plane
 connects to the database; the runtime and the speech server never do. Money is stored as
 integer nano-USD (`BIGINT`, 10^-9 USD), never as floats; see
 [latency-and-cost.md](latency-and-cost.md).
@@ -16,6 +17,7 @@ sessions ─< session_turns      (CASCADE)
 usage_hourly                   (rollup, no foreign keys)
 audit_log                      (append-only)
 revoked_sessions               (signed-out dashboard sessions)
+session_claims                 (used session tokens, across every runtime replica)
 ```
 
 ## Tables
@@ -31,7 +33,8 @@ Dashboard accounts. `email` unique; `password_hash` is argon2id; `role` is `owne
 SDK keys. The full key (`vos_<prefix>_<secret>`) is shown once; the row keeps the public
 `prefix` (unique) and `secret_hash`, an HMAC-SHA256 of the secret with `API_KEY_PEPPER`.
 `agent_ids` and `allowed_origins` (JSONB lists, empty means any) scope what the key may
-start; `rpm_limit` overrides `DEFAULT_RPM_LIMIT`; `expires_at`, `revoked_at` and
+start. Because an empty list means any, deleting an agent removes it from every key's
+`agent_ids` and revokes a key whose only agent it was (audited); `rpm_limit` overrides `DEFAULT_RPM_LIMIT`; `expires_at`, `revoked_at` and
 `last_used_at` complete the lifecycle.
 
 ### `providers`
@@ -62,8 +65,10 @@ ingestion idempotent. Columns: `agent_id` (nullable), `agent_name` and `agent_ve
 they were, `transport` (`webrtc` or `websocket`), `subject` (`user:<id>` or `key:<id>`),
 `origin`, `started_at`, `ended_at`, `duration_s`, `end_reason`, `external_providers`
 (JSONB), `turn_count`, `interruptions`, `response_ms_p50`, `response_ms_max`, `usage`
-(JSONB: audio seconds, tokens, characters, cache hits, routed turns, and the stages that
-were self-hosted), `cost_stt_nusd`, `cost_llm_nusd`, `cost_tts_nusd`, `cost_total_nusd`
+(JSONB: audio seconds, main and small model tokens counted apart
+(`llm_input_tokens`, `llm_output_tokens`, `llm_small_input_tokens`,
+`llm_small_output_tokens`), characters synthesized, characters replayed from the phrase
+cache, cache hits, routed turns, and the stages that were self-hosted), `cost_stt_nusd`, `cost_llm_nusd`, `cost_tts_nusd`, `cost_total_nusd`
 (each nullable: null is "not reported"), `cost_status`, `savings_nusd`, `errors`,
 `transcript_stored`, `transcript_expires_at`.
 
@@ -102,6 +107,13 @@ Every mutation: `at`, actor id and e-mail, `action` (for example `agent.updated`
 `api_key.revoked`, `session.transcript_erased`), target, `details`, `ip`. A trigger
 (`audit_log_append_only`) refuses UPDATE and DELETE, so the log is append-only at the
 database level.
+
+### `session_claims`
+
+One row per session token that has been used (`session_id` primary key, `claimed_at`
+indexed). The runtime claims a ticket with an `INSERT ... ON CONFLICT DO NOTHING` before
+the call starts, so a ticket works once across every runtime replica. Tokens live 60
+seconds; the worker deletes claims older than an hour.
 
 ### `revoked_sessions`
 

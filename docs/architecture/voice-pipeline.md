@@ -107,9 +107,13 @@ so a slow but working synthesis is not cut off.
 - **Phrase cache** (`services/phrase_cache.py`): phrases of at most 200 characters are
   synthesized once per provider, model and voice, and replayed from memory with no
   provider call and no billed characters.
-- **Response cache** (`router.py`, opt-in, agents without tools only): an exact repeat of a
-  normalized question replays the stored answer with no LLM call. Keys include the agent
-  version, so any edit retires old answers.
+- **Response cache** (`router.py`, opt-in, agents without tools only): an exact repeat of
+  the whole normalized conversation replays the stored answer with no LLM call. The key is
+  every user and assistant message so far (not the system prompt), never just the last
+  question: an answer can draw on anything said earlier ("can you confirm my details?"),
+  so it is only replayed to a caller who said exactly the same things, typically the same
+  first question after the greeting. Keys include the agent version, so any edit retires
+  old answers.
 - **Small model routing**: with `llm_small_provider_id` set, turns of at most
   `small_model_max_words` words go to the small model through Pipecat's `LLMSwitcher`.
 

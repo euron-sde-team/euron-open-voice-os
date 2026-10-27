@@ -64,6 +64,7 @@ emulator endpoint and plain HTTP cookies.
 | `DEMO_LLM_URL` | `http://mock-providers:4550/v1` | The LLM URL the demo seed gives its providers |
 | `DEFAULT_RPM_LIMIT` | `120` | Requests per minute for an SDK key without its own limit |
 | `MAX_BODY_BYTES` | `2000000` | Larger request bodies get 413 |
+| `MAX_INTERNAL_BODY_BYTES` | `32000000` | Body limit for `/internal/*` (the runtime's session reports), so a long call's report is never refused |
 | `WORKER_POLL_INTERVAL_S` | `30` | Worker idle wait between passes |
 | `WORKER_METRICS_PORT` | `9464` | Worker Prometheus port (0 disables) |
 | `OTEL_ENABLED` | `false` | Install an OpenTelemetry SDK with an OTLP exporter, configured by the standard `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME` |
@@ -90,7 +91,7 @@ Read by the CLI and the server entry point directly:
 | `ICE_URLS` | empty | Comma-separated TURN URLs **browsers** use, for example `turn:turn.example.com:3478?transport=udp`. Empty: no TURN (direct connections only) |
 | `SERVER_ICE_URLS` | empty | The same TURN server as the **runtime** reaches it on the private network. Empty: `ICE_URLS`. Locally `turn:turn:3478?transport=udp` |
 | `TURN_PASSWORD` | empty | coturn's `static-auth-secret` (the stack's `TURN_SECRET`); credentials are minted per call from it |
-| `AGENT_CACHE_TTL_S` | `5` | How long the runtime caches an agent; edits reach new calls within it |
+| `AGENT_CACHE_TTL_S` | `5` | How long the runtime caches an agent fetched from `/internal/agents/{id}`. Call admission does not use it: each call gets its agent fresh with the ticket claim |
 | `REPORT_TIMEOUT_S` | `10` | Timeout of calls to the control plane |
 | `RUNTIME_STATIC_AGENTS` | unset | Path to a JSON list of `ResolvedAgent`: run the runtime without a control plane (development and tests); reports are kept in memory |
 
@@ -108,7 +109,7 @@ Read by the CLI and the server entry point directly:
 | `KOKORO_PRELOAD` | `true` | Load Kokoro at start |
 | `SPEECH_CONCURRENCY` | `2` | Model calls in flight, for recognition and for synthesis separately |
 | `SPEECH_THREADS` | `4` | CPU threads per model call; keep threads x concurrency within the container's cores |
-| `SPEECH_MAX_AUDIO_S` | `60` | Longest audio accepted for transcription |
+| `SPEECH_MAX_AUDIO_S` | `60` | Longest audio accepted for transcription (uploads are also capped at 25 MB, and WAV sample rates must be 8 to 96 kHz) |
 | `SPEECH_MAX_CHARS` | `4000` | Longest text accepted for synthesis |
 | `SPEECH_API_KEY` | empty | When set, every request except health checks must send it as a Bearer token |
 | `WHISPER_DOWNLOAD` | `tiny,base,small` | Sizes `voiceos models` downloads |

@@ -15,9 +15,10 @@ browsers; the database must not be reachable from anything browsers touch).
 
 Run the voice runtime as its own service (`voiceos runtime`, its own image with the
 `runtime` extra) with no database connection. It trusts only session tokens signed with
-`RUNTIME_TOKEN_SECRET`, loads the agent from `GET /internal/agents/{id}` (cached for
-`AGENT_CACHE_TTL_S`), and posts a `SessionReport` to `POST /internal/sessions` when the call
-ends, both with `INTERNAL_API_TOKEN`. The contract between the two is `core/contract.py`.
+`RUNTIME_TOKEN_SECRET`, claims each ticket and receives its agent from
+`POST /internal/claims/{session_id}`, and posts a `SessionReport` (with the agent
+configuration the call ran with) to `POST /internal/sessions` when the call ends, both with
+`INTERNAL_API_TOKEN`. The contract between the two is `core/contract.py`.
 The control plane stores the report idempotently, computes cost, applies redaction and
 retention, and updates the rollup.
 
@@ -32,10 +33,11 @@ retention, and updates the rollup.
 **Bad / caveats**
 - A report in flight is lost if the control plane stays down for the three retries; the
   loss is logged.
-- Agent edits reach new calls after the runtime's cache TTL (5 s by default), not
-  instantly.
-- Used-token memory is per instance, so single use is per instance; the 60 s token
-  lifetime bounds a cross-instance replay ([threat-model.md](../threat-model.md), T1).
+- Admitting a call costs one round trip to the control plane (the ticket claim), which
+  must be reachable for new calls; calls in progress do not depend on it until they report.
+- Single use is enforced by the control plane, not the runtime: the claim is an atomic
+  insert into `session_claims` in Postgres, so a ticket works once across every replica
+  ([threat-model.md](../threat-model.md), T1).
 
 ## Alternatives considered
 

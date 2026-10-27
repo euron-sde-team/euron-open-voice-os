@@ -16,7 +16,7 @@ but a token the control plane signed (`core/tokens.py`):
 | Audience | `voiceos-runtime` |
 | Lifetime | 60 seconds |
 | Claims | `sid` (the session id, a random UUID), `agent`, `origin` (the page origin, for browsers), `sub` (`user:<id>` or `key:<id>`) |
-| Use | Once: the runtime remembers used session ids for 120 s and refuses a replay with 409 `token_used` |
+| Use | Once, across every runtime replica: the runtime claims the token through `POST /internal/claims/{session_id}`, an atomic insert into `session_claims` in Postgres, and only the first claim wins; a replay on any replica gets 409 `token_used` (each runtime also remembers used ids for 120 s as a fast local check) |
 
 `Sessions.admit()` (`runtime/app.py`) also refuses a browser whose `Origin` differs from
 the token's (403), a WebSocket from an origin outside `ALLOWED_ORIGINS` (403), and any
@@ -35,8 +35,11 @@ hour. The runtime mints its own per offer. There is no static TURN password.
 - Scoped: `agent_ids` (403 `agent_not_allowed`) and `allowed_origins` (403
   `origin_not_allowed` when the browser's `Origin` is missing or different). Keep keys on
   your server; scope a key to origins only when the browser calls `/v1/sessions` itself.
+- An empty `agent_ids` means every agent, so deleting an agent never widens a key: the
+  agent is removed from every key's scope, and a key whose only agent it was is revoked
+  (audited as `api_key.revoked` with the reason).
 - Rate limited per key (`rpm_limit`, default `DEFAULT_RPM_LIMIT` 120 per minute, 429 with
-  `Retry-After`), expiring, revocable; revocation reaches every replica within about a
+  `Retry-After`; clearing it returns the key to the default), expiring, revocable; revocation reaches every replica within about a
   second through the config version stamp.
 - Malformed prefixes are refused before any cache or database lookup.
 
@@ -61,9 +64,12 @@ hour. The runtime mints its own per offer. There is no static TURN password.
 
 ## The runtime and the control plane
 
-The runtime calls `GET /internal/agents/{id}` (which returns provider credentials opened
-for this call) and `POST /internal/sessions` with `Authorization: Bearer
-INTERNAL_API_TOKEN`, compared in constant time. On AWS these calls stay inside the VPC
+The runtime calls `POST /internal/claims/{session_id}` (which claims the ticket and
+returns the agent with provider credentials opened for this call), `GET
+/internal/agents/{id}` and `POST /internal/sessions` with `Authorization: Bearer
+INTERNAL_API_TOKEN`, compared in constant time. A session report carries the agent
+configuration the call ran with, with every provider key removed. `/internal/*` accepts
+bodies up to `MAX_INTERNAL_BODY_BYTES` (32 MB) so a long call's report is never refused. On AWS these calls stay inside the VPC
 (Cloud Map names), and the load balancer answers 404 for `/internal/*`.
 
 ## Provider credentials
@@ -76,8 +82,16 @@ INTERNAL_API_TOKEN`, compared in constant time. On AWS these calls stay inside t
   cannot redirect a stored key to a host of their choice.
 - `base_url` must be `http://` or `https://` and must not be a link-local, unspecified or
   instance metadata address (`169.254.0.0/16`, `fd00:ec2::254`, `metadata`,
-  `metadata.google.internal`, `instance-data`). Private addresses are allowed on purpose:
-  self-hosted models live there.
+  `metadata.google.internal`, `instance-data`). Hosts are canonicalized first
+  (`core/net.py`), the way the operating system's resolver reads them: an IPv4 address
+  written as one integer (`2852039166`), in hex (`0xa9fea9fe`), in octal or with a trailing
+  dot is the same address and is refused the same way. Private addresses are allowed on
+  purpose: self-hosted models live there.
+- The same check applies to the webhook tool's URL, on create and on edit. When the tool
+  runs, the runtime resolves the host and refuses the call if any address it resolves to
+  is link-local or metadata, so a DNS name pointing there does not get through.
+- A disabled provider receives nothing: an agent that relies on a disabled STT, LLM or
+  TTS provider cannot take calls (404), and a disabled small model just turns routing off.
 
 ## The browser
 
@@ -104,12 +118,18 @@ INTERNAL_API_TOKEN`, compared in constant time. On AWS these calls stay inside t
 - Tokens in URLs (`?token=` on the runtime's offer, WebSocket and ICE URLs) are redacted
   from access logs; `authorization`, `password`, `secret`, `api_key` fields are redacted
   from structured logs.
+- Pipecat logs through loguru, at DEBUG by default, including the LLM context of every
+  turn and every sentence it speaks. VoiceOS routes loguru into the JSON logger with a
+  WARNING floor (`core/logs.py`), so none of that is logged, and runs the PII redactor
+  over every Pipecat message that does pass.
 
 ## Speech server
 
 Internal only (no public route on AWS). Optionally requires `SPEECH_API_KEY` as a Bearer
 token on every request except health checks. Request size is bounded by
-`SPEECH_MAX_AUDIO_S` (60 s of audio) and `SPEECH_MAX_CHARS` (4,000 characters).
+`SPEECH_MAX_AUDIO_S` (60 s of audio), a 25 MB upload cap and `SPEECH_MAX_CHARS` (4,000
+characters); WAV sample rates outside 8 to 96 kHz are refused, and audio is decoded off the
+event loop.
 
 ## Audit log
 

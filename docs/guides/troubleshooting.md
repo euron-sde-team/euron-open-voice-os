@@ -36,5 +36,6 @@
 | --- | --- | --- |
 | Cost shows "not reported" | The provider has no price configured, or it did not report usage | Enter the provider's list prices on the Providers page. VoiceOS ships no price list |
 | Cost shows "Self-hosted" | Every stage runs on your infrastructure | Expected: no per-call price; hardware is not modelled |
-| An agent edit does not apply to the next call | The runtime caches agents for `AGENT_CACHE_TTL_S` (5 s) | Wait a few seconds; calls in progress keep their version |
+| An agent edit does not apply to the next call | Each call loads its agent fresh with its ticket claim, but the control plane caches resolved agents for 5 s; without Redis, another API replica only drops its copy when that expires | Wait a few seconds, or set `REDIS_URL` so every replica invalidates at once; calls in progress keep their version |
+| An agent cannot take calls (404 "agent not found or disabled") although it is enabled | One of its STT, LLM or TTS providers is disabled; a disabled provider receives nothing | Enable the provider, or switch the agent to another one (a disabled small model only turns routing off) |
 | The overview lags a finished call by a few seconds | The runtime reports the session when the call ends, then the overview is cached for 15 s | Expected |

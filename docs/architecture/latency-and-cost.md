@@ -36,8 +36,8 @@ never drift. The API converts to USD only for display.
 | Stage | Usage (reported by the provider) | Price (configured on the provider) | Cost |
 | --- | --- | --- | --- |
 | STT | audio seconds | `per_audio_minute` | seconds / 60 x price |
-| LLM | prompt and completion tokens, and whether the provider reported them | `per_million_input_tokens`, `per_million_output_tokens` | tokens / 10^6 x price, input and output separately |
-| TTS | characters synthesized, minus characters replayed from the phrase cache | `per_million_characters` | billed characters / 10^6 x price |
+| LLM | prompt and completion tokens, and whether the provider reported them; the small model's tokens are counted apart | `per_million_input_tokens`, `per_million_output_tokens` of each model's own provider | tokens / 10^6 x price, input and output separately, the main and the small model each at their own rate |
+| TTS | characters actually synthesized (counted when the provider is called; phrase-cache replays never reach it, so they are not in this number) | `per_million_characters` | characters / 10^6 x price |
 
 A stage costs:
 
@@ -50,7 +50,7 @@ A stage costs:
 
 | `cost_status` | Meaning |
 | --- | --- |
-| `self_hosted` | Every stage runs on your own infrastructure |
+| `self_hosted` | Every stage runs on your own infrastructure (including the small model, when the session used it) |
 | `complete` | Every stage has a cost (self-hosted stages count as 0) |
 | `partial` | Some stages have a cost, some are not reported; the total covers only the known ones |
 | `not_reported` | No stage has a cost |
@@ -65,10 +65,17 @@ What the caches avoided, at list price:
 
 - characters replayed from the **phrase cache**, at the TTS provider's price,
 - turns answered from the **response cache**, at this session's own average LLM cost per
-  answered turn.
+  turn the LLM answered (a greeting is spoken without the LLM, so it does not count).
 
 Savings are recorded per session (`savings_nusd`) and summed in the hourly rollup. A
 self-hosted provider saves nothing in money (it has no price).
+
+### Which configuration prices a session
+
+Each session report carries the agent configuration the call ran with (provider keys
+removed), and ingestion prices the session, and applies its retention and redaction, from
+that snapshot. Editing an agent's providers or prices, or disabling it, while a call is in
+progress changes nothing about that call's record.
 
 ### Prices
 

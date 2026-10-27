@@ -29,9 +29,12 @@ No network, no database. They mirror the source tree:
 
 - `core/`: configuration and boot guards, the KV store and config cache invalidation,
   money rounding, sealing and storage, password and key hashing, schemas, logs, errors.
-- `domain/`: session cost (complete, partial, not reported, self-hosted, savings),
-  redaction with Luhn and Verhoeff checks, session tokens (expiry, audience, forgery),
-  provider classification and private hosts, the response cache key and expiry.
+- `domain/`: session cost (complete, partial, not reported, self-hosted, savings, the small
+  model at its own rate), redaction with Luhn and Verhoeff checks, spoken e-mails, PAN in
+  any case and misheard card numbers, session tokens (expiry, audience, forgery), provider
+  classification and private hosts, metadata addresses in every spelling, the response
+  cache key (the whole conversation) and expiry, FAQ lookup, WER scoring.
+- `core/test_logs_pipecat.py`: Pipecat's own logging never writes the caller's words.
 - `runtime/test_turns.py`: the turn recorder fed with Pipecat frames in the orders the
   turn strategies really emit them, checking which turn gets the words, the answer and
   each latency.
@@ -66,6 +69,8 @@ What the suites cover:
 | `test_providers_agents.py` | Sealed provider keys never returned, host moves, the SSRF guard, adapters per stage, classification, providers in use, the Test button, templates, versions reaching the runtime, internal-token refusal |
 | `test_sessions_api.py` | Idempotent reports, pagination and filters, cost and "not reported", redaction, retention 0, erase, purge, the overview against the filed reports |
 | `test_hardening.py` | Health, readiness, system info, metrics, security headers, the error envelope, the body limit, the append-only audit log, parallel benchmarks and reports |
+| `test_cli_owner.py` | `voiceos create-owner` creates an owner, then resets it and signs the old sessions out |
+| `test_review_fixes.py` | One test per issue an independent review found: a ticket used once across two runtime replicas, deleting a key's only agent revokes the key, clearing a key's rate limit, a disabled provider receiving no calls, a report costed with the configuration the call ran with, webhook URLs aimed at metadata refused, a runtime shutdown still reporting what it measured |
 
 Safety: the suite drops and recreates its database, so it refuses any database whose name
 does not contain `test`, and any non-local host unless `ALLOW_REMOTE_TEST_DB=true`.

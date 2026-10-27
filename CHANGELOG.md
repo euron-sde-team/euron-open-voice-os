@@ -30,14 +30,22 @@ dashboard.
 - Measured latency per turn: end of turn, speech to text, first LLM token, first TTS
   audio and the response a caller feels, from the end of their speech to the agent's
   first audio.
-- Cost per session from the usage providers report (audio seconds, tokens, characters)
-  and the list prices you configure, in integer nano-USD, with explicit "partial", "not
-  reported" and "self-hosted" states instead of guessed zeros.
-- Cost optimizer: a TTS phrase cache, an exact-repeat response cache for agents without
-  tools, and routing of short turns to a smaller model; both caches count as savings.
+- Cost per session from the usage providers report (audio seconds, tokens, characters
+  synthesized) and the list prices you configure, in integer nano-USD, with explicit
+  "partial", "not reported" and "self-hosted" states instead of guessed zeros; the small
+  model's tokens are counted apart and priced at its own provider's rate; each report
+  carries the agent configuration the call ran with, so editing or disabling an agent
+  mid-call changes nothing about its record, and a runtime shutdown still reports what was
+  measured.
+- Cost optimizer: a TTS phrase cache, a response cache for agents without tools that
+  replays an answer only for an exact repeat of the whole conversation (never just the
+  last question), and routing of short turns to a smaller model; both caches count as
+  savings.
 - Privacy defaults: no audio stored, transcript retention per agent (0 keeps no words),
-  redaction of e-mail addresses, phone numbers, cards (Luhn), Aadhaar numbers (Verhoeff)
-  and PAN before storage, and a disclosure of every external provider before a call.
+  redaction of e-mail addresses (written or spoken), phone numbers, cards (Luhn) and other
+  14 to 19 digit numbers, Aadhaar numbers (Verhoeff) and PAN (any case) before storage,
+  including provider error messages, no conversation text in logs, and a disclosure of
+  every external provider before a call.
 - SDK: `POST /v1/sessions` with a `vos_` key scoped to agents and website origins, rate
   limited per key, returning a one-minute single-use session ticket.
 - Latency benchmark: real conversations with up to five agents on committed Kokoro
@@ -60,11 +68,19 @@ dashboard.
 
 - The runtime accepts a connection only with a session token the control plane signed:
   HS256, audience `voiceos-runtime`, 60 seconds, bound to one agent, one session id and,
-  for browsers, the page origin, and usable once.
+  for browsers, the page origin, and usable once across every runtime replica (claimed by
+  an atomic insert in Postgres before the call starts).
 - Refused handshakes carry their real status (401, 403, 409, 503) instead of a bare 403.
 - Provider keys are sealed with AES-256-GCM or KMS, bound to their row, and never returned;
-  moving a provider to another host requires its key again; provider URLs cannot target
-  link-local or instance metadata addresses.
+  moving a provider to another host requires its key again; provider and webhook URLs
+  cannot target link-local or instance metadata addresses in any spelling (integer, hex,
+  octal, trailing dot), and webhook hosts are re-checked after DNS resolution; a disabled
+  provider receives nothing.
+- Deleting an agent never widens an SDK key: a key whose only agent is deleted is revoked.
+- Pipecat's own logging (the LLM context and every spoken sentence at DEBUG) is routed
+  through the JSON logger with a WARNING floor and redacted, so callers' words never reach
+  the logs.
+- The speech server caps uploads at 25 MB and refuses WAV sample rates outside 8 to 96 kHz.
 - The dashboard's Content-Security-Policy is built per request and allows connections only
   to its own origin and the runtime's; the microphone is allowed for this origin only; the
   browser client uses Pipecat's local media manager, so it never downloads code from a

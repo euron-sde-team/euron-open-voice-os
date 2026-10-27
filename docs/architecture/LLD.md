@@ -19,7 +19,7 @@ apps/api/src/
     analytics/     usage_hourly rollup and the overview
     benchmarks/    latency benchmark runs, the headless voice client, committed utterances
     privacy/       redaction (e-mail, phone, card, Aadhaar, PAN)
-    internal/      /internal/agents/{id} and /internal/sessions for the runtime
+    internal/      /internal/agents/{id}, /internal/claims/{session_id} and /internal/sessions for the runtime
     system/        /healthz, /readyz, /metrics, /api/v1/system
     runtime/       the voice runtime: app (transports, admission, ICE), pipeline, turns
                    (TurnRecorder), router (TurnRouter, ResponseCache), providers (Pipecat
@@ -65,11 +65,17 @@ and `core/tokens.py` from the control plane side; it never touches the database.
 2. a browser `Origin` must match the token's origin (403 `origin_mismatch`), and for the
    WebSocket be in `ALLOWED_ORIGINS` (403),
 3. the session id must not have been used on this instance in the last 120 s (409
-   `token_used`),
+   `token_used`, a fast local check),
 4. fewer than `MAX_SESSIONS` calls may be live (503 `runtime_busy`).
 
-Then the agent is loaded (`HttpControlPlane.agent`, cached `AGENT_CACHE_TTL_S`; 404
-`unknown_agent` or 503 `control_plane_unavailable`). A refused WebSocket handshake is
+Then the ticket is claimed and the agent loaded in one call, `HttpControlPlane.claim()` to
+`POST /internal/claims/{session_id}?agent_id=...` (never cached). The control plane inserts
+the session id into `session_claims` with `ON CONFLICT DO NOTHING`; only the first claim on
+any replica wins, every other gets 409 `token_used`. Other outcomes: 404 `unknown_agent`
+(missing or disabled agent, or one relying on a disabled provider) or 503
+`control_plane_unavailable`. The worker deletes claims older than an hour (tokens live 60
+s). If the WebSocket accept or transport setup fails after admission, the slot is released
+at once. A refused WebSocket handshake is
 answered with the real status through the ASGI denial-response extension.
 
 ## The call
@@ -80,7 +86,10 @@ answered with the real status through the ASGI denial-response extension.
 observers: the `TurnRecorder` and `_AnswerStore` (fills the response cache). The greeting,
 if any, is spoken with a `TTSSpeakFrame`; otherwise the LLM opens. The session ends on
 client disconnect, the `end_conversation` tool, the idle timeout, the maximum duration or
-an unhandled error, and always returns a `SessionReport`.
+an unhandled error, and always returns a `SessionReport`: a failure in setup (providers,
+VAD, aggregators, the worker) closes what was opened and reports an `error` session, and a
+cancellation on shutdown stops the pipeline and reports what was measured with end reason
+`shutdown`. The runtime's lifespan waits for those reports before it closes.
 
 ## Reporting
 
@@ -88,16 +97,18 @@ an unhandled error, and always returns a `SessionReport`.
 0.5 s, 1 s and 2 s backoff). `sessions.service.ingest()`:
 
 1. returns early if the session id exists (idempotent),
-2. resolves the agent and computes cost (`sessions/cost.py`),
+2. takes the agent configuration from the report (the snapshot the call ran with, keys
+   removed), falling back to resolving the agent only for reports without one, and
+   computes cost (`sessions/cost.py`),
 3. stores the session row, then its turns: words redacted when the agent's `redact_pii`
-   is on, and kept only when `transcript_retention_days` is above 0 (with
+   is on (provider error messages on the session and its turns are always redacted), and kept only when `transcript_retention_days` is above 0 (with
    `transcript_expires_at = ended_at + days`),
 4. upserts the `usage_hourly` row in the same transaction.
 
 ## The worker
 
 `worker.tick()` purges expired transcripts (500 sessions per batch: words set to null,
-`transcript_stored` false) and runs at most one queued benchmark. A benchmark holds
+`transcript_stored` false), deletes ticket claims older than an hour and runs at most one queued benchmark. A benchmark holds
 `sessions` calls per agent through the runtime's internal URL with the headless client
 (`benchmarks/client.py`), each speaking one committed utterance in the agent's language,
 then reads the turns the runtime reported and stores percentiles, stage averages and the

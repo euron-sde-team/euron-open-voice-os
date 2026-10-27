@@ -10,6 +10,14 @@ the STT provider and from the TTS provider to the caller, and are never written 
 database, object storage or logs. Opt-in recording is on the roadmap, not a hidden
 setting. The tests check that a session leaves no objects in storage.
 
+## No words in logs
+
+Pipecat logs through loguru, and at its default DEBUG level it writes the language
+model's whole context on every turn and every sentence it speaks: the caller's words,
+outside retention, redaction and erasure. VoiceOS routes loguru into its JSON logger with a
+WARNING floor (`core/logs.py`), so none of that is logged, and runs the redactor below over
+every Pipecat message that does pass.
+
 ## Transcripts follow the agent's retention
 
 `privacy.transcript_retention_days` on each agent (default 30):
@@ -29,13 +37,16 @@ is written:
 
 | Detail | Rule | Replaced by |
 | --- | --- | --- |
-| E-mail address | pattern | `[email]` |
-| PAN (India) | five letters, four digits, one letter | `[pan]` |
+| E-mail address | pattern, written (`priya@example.com`) or as speech recognition writes it (`priya at gmail dot com`) | `[email]` |
+| PAN (India) | five letters, four digits, one letter, in any case (`abcde1234f`), or spaced in capitals (`ABCDE 1234 F`) | `[pan]` |
 | Aadhaar number | 12 digits, first not 0 or 1, valid Verhoeff checksum | `[aadhaar]` |
 | Card number | 13 to 19 digits with a valid Luhn checksum | `[card]` |
 | Phone number | 10 to 13 digits (spaces, dashes and a leading `+` allowed) that are not one of the above | `[phone]` |
+| Other long number | 14 to 19 digits that fail the card checksum: a card number with one digit misheard is still a card number | `[number]` |
 
-Checksums keep ordinary numbers ("table for 2 at 7") untouched. Redaction is pattern
+Checksums keep ordinary numbers ("table for 2 at 7") untouched, and shorter order and
+booking numbers survive. Provider error messages stored on a session and its turns are
+always redacted, since they can echo what the caller said. Redaction is pattern
 based: names, addresses, and numbers spoken as words are not caught, which is why
 retention is the stronger control.
 
