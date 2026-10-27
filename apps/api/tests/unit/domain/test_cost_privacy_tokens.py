@@ -17,9 +17,9 @@ from voiceos.core.contract import (
     TurnReport,
     UsageReport,
 )
+from voiceos.core.net import is_private_host
 from voiceos.core.tokens import AUDIENCE, issue, verify
 from voiceos.privacy.redact import luhn_ok, redact, verhoeff_ok
-from voiceos.providers.schemas import is_private_host
 from voiceos.providers.service import classify
 from voiceos.runtime.router import ResponseCache, normalize
 from voiceos.sessions.cost import session_cost
@@ -81,7 +81,8 @@ def test_every_stage_priced_and_reported_is_complete() -> None:
     assert c.status == "complete"
     assert c.stt == 6_000_000  # $0.006 for one minute, in nano-USD
     assert c.llm == 150_000_000 + 300_000_000
-    assert c.tts == 15_000_000_000  # only the million characters not replayed from cache
+    # TTS usage counts only what was synthesized; replays never reached the provider.
+    assert c.tts == 30_000_000_000
     assert c.total == c.stt + c.llm + c.tts
     assert c.savings == 15_000_000_000  # the cached million characters at list price
 
@@ -113,6 +114,32 @@ def test_mixed_stages_are_partial_and_self_hosted_costs_nothing() -> None:
     assert session_cost(None, report(USAGE)).status == "not_reported"
 
 
+def test_the_small_model_is_priced_at_its_own_rate() -> None:
+    hosted_main = provider("llm", hosted=True)
+    paid_small = provider("llm", per_million_input_tokens=1.0, per_million_output_tokens=2.0)
+    a = agent(provider("stt", hosted=True), hosted_main, provider("tts", hosted=True))
+    a = a.model_copy(update={"llm_small": paid_small})
+    usage = UsageReport(
+        llm_input_tokens=500_000,
+        llm_output_tokens=10_000,
+        llm_small_input_tokens=1_000_000,
+        llm_small_output_tokens=1_000_000,
+        llm_usage_reported=True,
+        llm_turns_routed_small=3,
+    )
+    c = session_cost(a, report(usage))
+    assert c.llm == 3_000_000_000  # main self-hosted (0) + small at $1 in, $2 out
+    assert c.status == "complete"  # not "self_hosted": a paid model took part
+    unused = usage.model_copy(
+        update={
+            "llm_small_input_tokens": 0,
+            "llm_small_output_tokens": 0,
+            "llm_turns_routed_small": 0,
+        }
+    )
+    assert session_cost(a, report(unused)).status == "self_hosted"
+
+
 def test_response_cache_hits_count_as_llm_savings() -> None:
     a = agent(
         provider("stt", hosted=True),
@@ -138,6 +165,11 @@ def test_response_cache_hits_count_as_llm_savings() -> None:
         ("card 4111 1111 1111 1111 ok", "card [card] ok"),
         ("aadhaar 2345 6789 0124", "aadhaar [aadhaar]"),
         ("call +91 98765 43210 now", "call [phone] now"),
+        ("card 4111-1111-1111-1112 misheard", "card [number] misheard"),
+        ("pan abcde1234f", "pan [pan]"),
+        ("PAN ABCDE 1234 F", "PAN [pan]"),
+        ("write to priya at gmail dot com", "write to [email]"),
+        ("table 2024 a for two", "table 2024 a for two"),
         ("table for 2 at 7pm", "table for 2 at 7pm"),
     ],
 )
@@ -195,6 +227,46 @@ def test_external_is_derived_and_can_only_be_raised(
     assert classify(adapter, url, marked) == expected
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://169.254.169.254/latest",
+        "http://2852039166/",
+        "http://0xa9fea9fe/",
+        "http://0251.0376.0251.0376/",
+        "http://169.254.169.254./",
+        "http://metadata.google.internal./",
+        "http://[fd00:ec2::254]/",
+        "file:///etc/passwd",
+    ],
+)
+def test_metadata_addresses_are_refused_in_every_spelling(url: str) -> None:
+    from voiceos.core.net import check_url
+
+    with pytest.raises(ValueError):
+        check_url(url)
+
+
+def test_numeric_spellings_of_public_ips_are_not_private() -> None:
+    from voiceos.core.net import canonical_host
+
+    assert canonical_host("134744072") == "8.8.8.8"
+    assert not is_private_host("134744072")
+    assert is_private_host("0x7f000001")  # 127.0.0.1
+
+
+def test_webhook_urls_are_checked_like_provider_urls() -> None:
+    from pydantic import ValidationError
+
+    from voiceos.core.contract import ToolSpec
+
+    assert ToolSpec(name="http_webhook", url="https://crm.example.com/hook/").url == (
+        "https://crm.example.com/hook"
+    )
+    with pytest.raises(ValidationError):
+        ToolSpec(name="http_webhook", url="http://2852039166/latest/meta-data")
+
+
 def test_private_hosts() -> None:
     for host in ("localhost", "127.0.0.1", "10.1.2.3", "192.168.1.5", "speech", "::1"):
         assert is_private_host(host), host
@@ -211,6 +283,32 @@ def test_response_cache_keys_bind_agent_version_and_normalized_text() -> None:
     k = ResponseCache.key(a, "What time do you open?")
     assert k == ResponseCache.key(a, "what time do you open")
     assert k != ResponseCache.key(a.model_copy(update={"version": 4}), "what time do you open")
+
+
+def test_cached_answers_depend_on_the_whole_conversation() -> None:
+    from types import SimpleNamespace
+    from typing import cast
+
+    from pipecat.frames.frames import LLMContextFrame
+
+    from voiceos.runtime.router import conversation_text
+
+    def frame(*messages: tuple[str, str]) -> LLMContextFrame:
+        ctx = SimpleNamespace(get_messages=lambda: [{"role": r, "content": t} for r, t in messages])
+        return cast(LLMContextFrame, SimpleNamespace(context=ctx))
+
+    a = agent(provider("stt"), provider("llm"), provider("tts"))
+    priya = frame(
+        ("system", "x"),
+        ("user", "My name is Priya"),
+        ("assistant", "Hi Priya"),
+        ("user", "Can you confirm my details?"),
+    )
+    other = frame(("system", "x"), ("user", "Can you confirm my details?"))
+    assert "system" not in conversation_text(priya)
+    assert ResponseCache.key(a, conversation_text(priya)) != ResponseCache.key(
+        a, conversation_text(other)
+    )
 
 
 def test_response_cache_is_bounded_and_expires() -> None:

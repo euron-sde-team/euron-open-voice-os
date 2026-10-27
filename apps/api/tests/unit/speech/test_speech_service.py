@@ -128,6 +128,7 @@ async def test_bad_audio_and_models_are_clean_400s(speech: Any) -> None:
         ({"file": ("a.wav", wav(0.5, width=1), "audio/wav")}, {}, "Send WAV audio"),
         ({"file": ("a.wav", wav(61.0, rate=8_000), "audio/wav")}, {}, "longer than"),
         ({"file": ("a.wav", wav(0.5), "audio/wav")}, {"model": "whisper-huge"}, "Unknown Whisper"),
+        ({"file": ("a.wav", wav(0.001, rate=4_000), "audio/wav")}, {}, "Sample rate"),
     ]
     for files, data, fragment in cases:
         r = await client.post("/v1/audio/transcriptions", files=files, data=data)

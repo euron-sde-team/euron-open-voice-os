@@ -48,8 +48,8 @@ CSRF = {"x-voiceos-csrf": "1"}
 RUNTIME_SECRET = "test-only-runtime-token-secret-32-bytes-plus"
 INTERNAL_TOKEN = "test-only-internal-api-token-32-bytes-plus"
 TABLES = (
-    "usage_hourly, session_turns, sessions, benchmark_runs, audit_log, api_keys, agents, "
-    "providers, revoked_sessions, users"
+    "usage_hourly, session_turns, sessions, session_claims, benchmark_runs, audit_log, "
+    "api_keys, agents, providers, revoked_sessions, users"
 )
 AUDIO = Path(__file__).resolve().parents[2] / "src/voiceos/benchmarks/audio"
 

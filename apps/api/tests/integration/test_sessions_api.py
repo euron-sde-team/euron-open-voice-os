@@ -136,7 +136,7 @@ async def test_transcripts_are_redacted_before_storage(stack: Stack, voice: Voic
     )
     assert stored == (
         "Mail me at [email] or call [phone], card [card], aadhaar [aadhaar], PAN [pan], "
-        "order 4111 1111 1111 1112"
+        "order [number]"
     )
     raw = await scalar(
         stack,

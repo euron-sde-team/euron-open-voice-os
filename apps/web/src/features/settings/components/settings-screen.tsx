@@ -73,7 +73,7 @@ export function SettingsScreen() {
                       <Chip tone="danger">Unreachable</Chip>
                     )
                   }
-                  hint={`Browsers connect to ${q.data.runtime_url}`}
+                  hint={`One runtime instance, as the API reaches it; browsers connect to ${q.data.runtime_url}`}
                 />
                 <Row
                   label="Providers"

@@ -82,7 +82,9 @@ function Detail({ d }: { d: VoiceSessionDetail }) {
         <Stat label="Interruptions" hint={<Hint term="interruption" />}>{d.interruptions}</Stat>
         <Stat label="Cost (est.)" hint={<Hint term="cost" />}><Cost s={d} /></Stat>
         <Stat label="Saved by caches" hint={<Hint term="savings" />}>{formatUsd(d.savings_usd)}</Stat>
-        <Stat label="LLM tokens">{formatNumber(Number(u.llm_input_tokens ?? 0) + Number(u.llm_output_tokens ?? 0))}</Stat>
+        <Stat label="LLM tokens">{formatNumber(
+          ["llm_input_tokens", "llm_output_tokens", "llm_small_input_tokens", "llm_small_output_tokens"].reduce((n, k) => n + Number(u[k] ?? 0), 0),
+        )}</Stat>
       </div>
       <section>
         <h3 className="mb-2 text-[13px] font-semibold">Cost by stage</h3>
