@@ -103,6 +103,7 @@ async def test_transcription_shapes_and_model_choice(speech: Any) -> None:
     assert float(r.headers["x-voiceos-audio-seconds"]) == pytest.approx(1.0, abs=0.01)
     call = models._whisper["small"].calls[0]
     assert call["language"] == "hi" and call["samples"] == 16_000  # resampled to 16 kHz mono
+    assert call["initial_prompt"].startswith("नमस्ते")  # steers Whisper to Devanagari
 
     r = await client.post(
         "/v1/audio/transcriptions",
@@ -111,6 +112,7 @@ async def test_transcription_shapes_and_model_choice(speech: Any) -> None:
     )
     body = r.json()
     assert body["task"] == "transcribe" and body["segments"][0]["text"] == "Hello there."
+    assert models._whisper["base"].calls[-1]["initial_prompt"] is None  # English: no prompt
     r = await client.post(
         "/v1/audio/transcriptions",
         files={"file": ("a.wav", wav(0.5), "audio/wav")},

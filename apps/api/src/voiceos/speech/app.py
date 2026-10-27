@@ -54,6 +54,14 @@ class SpeechRequest(BaseModel):
 
 _WAV_FORMATS = "Send WAV audio: 16-bit or 32-bit PCM, or 32-bit float"
 
+# Whisper often writes Hindi in Urdu script and Marathi in Latin letters, even with the
+# language set. A short prompt in the right script steers it back to Devanagari (measured on
+# FLEURS: docs/benchmarks/wer.md). Used only when the caller sends no prompt of its own.
+SCRIPT_PROMPTS = {
+    "hi": "नमस्ते, आप कैसे हैं? मैं ठीक हूँ।",
+    "mr": "नमस्कार, तुम्ही कसे आहात? मी ठीक आहे.",
+}
+
 
 def _error(status: int, message: str, code: str) -> JSONResponse:
     return JSONResponse(
@@ -188,7 +196,11 @@ def create_app(settings: SpeechSettings | None = None) -> FastAPI:
         audio = decode_wav(await file.read(), settings.speech_max_audio_s)
         async with stt_slots:
             result = await asyncio.to_thread(
-                models.transcribe, audio, size=size, language=language, prompt=prompt
+                models.transcribe,
+                audio,
+                size=size,
+                language=language,
+                prompt=prompt or SCRIPT_PROMPTS.get((language or "").split("-")[0]),
             )
         headers = {
             "x-voiceos-model-ms": f"{result.elapsed_ms:.1f}",

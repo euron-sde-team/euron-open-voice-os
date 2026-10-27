@@ -17,7 +17,7 @@ ENV         ?= aws-dev
 DEMO_PW      = $(shell grep -s '^VOS_DEMO_PASSWORD=' $(COMPOSE_DIR)/.env | cut -d= -f2)
 
 .PHONY: help env up up-aws down logs ps demo test test-integration migration test-matrix e2e qa lint \
-        typecheck build openapi sanitize utterances admin aws-deploy aws-migrate aws-admin tf-fmt tf-validate tf-lint tf-security tf-aws-on-floci \
+        typecheck build openapi sanitize wer utterances admin aws-deploy aws-migrate aws-admin tf-fmt tf-validate tf-lint tf-security tf-aws-on-floci \
         aws-plan clean
 
 help: ## Show this help
@@ -92,6 +92,9 @@ e2e: ## Browser end-to-end tests (Playwright) against the running stack (make up
 
 qa: ## Browser QA sweep (Puppeteer): every page, light and dark, desktop and phone
 	cd scripts/qa && pnpm install --frozen-lockfile && QA_PASSWORD='$(DEMO_PW)' node qa.mjs
+
+wer: ## Speech recognition accuracy on FLEURS (English, Hindi, Marathi) through the running speech service
+	$(API) uv run --extra speech voiceos wer --speech-url http://localhost:$${VOS_SPEECH_PORT:-4537}
 
 utterances: ## Regenerate the committed test utterances with the local Kokoro voice (needs make up)
 	python3 scripts/gen-utterances.py http://localhost:$${VOS_SPEECH_PORT:-4537}
