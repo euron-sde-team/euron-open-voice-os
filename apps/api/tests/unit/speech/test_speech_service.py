@@ -222,20 +222,22 @@ def test_kokoro_download_is_checksum_verified(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     good = b"model bytes"
-    monkeypatch.setattr(download, "KOKORO_FILES", {"m.onnx": hashlib.sha256(good).hexdigest()})
+    pinned = download.Pinned(hashlib.sha256(good).hexdigest(), ("https://host/m.onnx",))
+    monkeypatch.setattr(download, "KOKORO_FILES", {"m.onnx": pinned})
     fetched: list[str] = []
 
-    def fake_fetch(url: str, path: Path) -> None:
+    def fake_fetch(url: str, part: Path, _min_speed: int = 0) -> None:
         fetched.append(url)
-        Path(path).write_bytes(good)
+        part.write_bytes(good)
 
-    monkeypatch.setattr(download.urllib.request, "urlretrieve", fake_fetch)
+    monkeypatch.setattr(download, "fetch_resumable", fake_fetch)
     download.fetch_kokoro(tmp_path)
     assert (tmp_path / "m.onnx").read_bytes() == good
     download.fetch_kokoro(tmp_path)  # present and verified: no second download
     assert len(fetched) == 1
 
-    monkeypatch.setattr(download, "KOKORO_FILES", {"bad.onnx": "0" * 64})
-    with pytest.raises(SystemExit, match="checksum mismatch"):
+    bad = download.Pinned("0" * 64, ("https://host/bad.onnx",))
+    monkeypatch.setattr(download, "KOKORO_FILES", {"bad.onnx": bad})
+    with pytest.raises(SystemExit, match=r"no mirror served bad\.onnx intact"):
         download.fetch_kokoro(tmp_path)
     assert not (tmp_path / "bad.onnx").exists() and not (tmp_path / "bad.onnx.part").exists()
