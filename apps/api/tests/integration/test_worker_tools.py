@@ -54,7 +54,8 @@ async def test_tools_answer_the_time_look_up_the_faq_and_end_the_call(stack: Sta
             utterance("en-03-order.wav"),
             utterance("en-01-booking.wav"),
         ],
-        gap_s=6.0,
+        gap_s=1.0,
+        wait_each=True,
     )
     row = await stack.session_row(t["session_id"])
     answers = {x["user_text"]: x["agent_text"] or "" for x in row["turns"] if x["user_text"]}

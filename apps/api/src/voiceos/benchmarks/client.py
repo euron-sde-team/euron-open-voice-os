@@ -86,6 +86,7 @@ async def converse(
     tail_s: float = 1.0,
     reply_timeout_s: float = 45.0,
     greeting_timeout_s: float = 20.0,
+    wait_each: bool = False,
     origin: str | None = "http://localhost:4510",
 ) -> Result:
     """Speak each utterance, then stay on the line until the agent has finished answering.
@@ -93,13 +94,18 @@ async def converse(
     After the last utterance the client keeps sending silence (as an open microphone would)
     until the agent stops speaking after it, or ``reply_timeout_s`` passes, then listens for
     ``tail_s`` more. Waiting for the answer rather than a fixed time keeps the sessions
-    complete on a slow or busy machine.
+    complete on a slow or busy machine. With ``wait_each`` it also waits for the answer to
+    every earlier utterance before the next, like a caller who lets the agent finish;
+    without it, the next utterance follows ``gap_s`` later (and may interrupt).
     """
     result = Result()
     headers = {"Origin": origin} if origin else {}
     async with websockets.connect(url, additional_headers=headers, max_size=None) as ws:
         speech_ended: list[float] = []
+        # The agent answered the latest utterance: audio arrived after it ended, then the
+        # agent stopped speaking.
         answered = asyncio.Event()
+        heard_since_end = [False]
         greeted = asyncio.Event()
 
         async def receive() -> None:
@@ -113,6 +119,8 @@ async def converse(
                     now = time.monotonic()
                     if which == "audio":
                         result.audio_frames.append((now, len(frame.audio.audio)))
+                        if speech_ended and now > speech_ended[-1]:
+                            heard_since_end[0] = True
                         if (
                             speech_ended
                             and result.first_audio_after_speech is None
@@ -127,8 +135,8 @@ async def converse(
                                 greeted.set()
                             if (
                                 event.get("type") == "bot-stopped-speaking"
-                                and len(speech_ended) == len(utterances)
-                                and result.first_audio_after_speech is not None
+                                and speech_ended
+                                and heard_since_end[0]
                             ):
                                 answered.set()
             except websockets.ConnectionClosed as exc:
@@ -146,7 +154,7 @@ async def converse(
                 await asyncio.sleep(FRAME_MS / 1000)
             await asyncio.sleep(0.3)
             step = SAMPLE_RATE * 2 * FRAME_MS // 1000
-            for pcm in utterances:
+            for n, pcm in enumerate(utterances):
                 started = time.monotonic()
                 result.speech_started.append(started)
                 for i in range(0, len(pcm), step):
@@ -155,16 +163,23 @@ async def converse(
                     await asyncio.sleep(
                         max(0.0, started + (i + step) / (SAMPLE_RATE * 2) - time.monotonic())
                     )
+                answered.clear()
+                heard_since_end[0] = False
                 speech_ended.append(time.monotonic())
                 result.speech_ended.append(speech_ended[-1])
                 quiet = silence(gap_s)
                 for i in range(0, len(quiet), step):
                     await ws.send(_audio_message(quiet[i : i + step]))
                     await asyncio.sleep(FRAME_MS / 1000)
-            deadline = time.monotonic() + (reply_timeout_s if utterances else 0.0)
-            while time.monotonic() < deadline and not answered.is_set() and not receiver.done():
-                await ws.send(quiet_frame)
-                await asyncio.sleep(FRAME_MS / 1000)
+                if wait_each or n == len(utterances) - 1:
+                    deadline = time.monotonic() + reply_timeout_s
+                    while (
+                        time.monotonic() < deadline
+                        and not answered.is_set()
+                        and not receiver.done()
+                    ):
+                        await ws.send(quiet_frame)
+                        await asyncio.sleep(FRAME_MS / 1000)
             deadline = time.monotonic() + tail_s
             while time.monotonic() < deadline and not receiver.done():
                 await ws.send(quiet_frame)

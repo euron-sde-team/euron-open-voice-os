@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-26
+## [0.1.0] - 2026-10-27
 
 First public release: the voice runtime, local speech, the control plane and the
 dashboard.
@@ -42,6 +42,10 @@ dashboard.
   limited per key, returning a one-minute single-use session ticket.
 - Latency benchmark: real conversations with up to five agents on committed Kokoro
   utterances in English and Hindi, run by the worker, labelled with the machine.
+- Speech accuracy benchmark (`make wer`): word and character error rate on Google FLEURS
+  for English, Hindi and Marathi through the speech service, labelled with the machine.
+- Hindi and Marathi transcription is prompted in Devanagari when the caller sends no
+  prompt, so Whisper stops writing them in Urdu or Latin script.
 - Dashboard: talk to an agent in the browser, agents and their pipeline editor,
   providers, overview, sessions with per-turn waterfalls, benchmarks, SDK keys,
   integrations, users, audit log and settings, light and dark.
