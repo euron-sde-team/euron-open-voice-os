@@ -81,7 +81,8 @@ async def update_key(
     if "agent_ids" in changes:
         changes["agent_ids"] = await _check_agents(session, data.agent_ids)
     for field, value in changes.items():
-        setattr(key, field, value if value is not None or field == "expires_at" else [])
+        # Null clears a field: an empty scope for the lists, the default for the rest.
+        setattr(key, field, [] if value is None and field in _LIST_FIELDS else value)
     audit(
         session,
         actor,
@@ -111,8 +112,25 @@ async def count_active(session: AsyncSession) -> int:
     return int(await session.scalar(stmt) or 0)
 
 
-async def forget_agent(session: AsyncSession, agent_id: str) -> None:
-    """Remove a deleted agent from every key's scope (in the caller's transaction)."""
+_LIST_FIELDS = {"agent_ids", "allowed_origins"}
+
+
+async def forget_agent(session: AsyncSession, agent_id: str, actor: Actor) -> None:
+    """Remove a deleted agent from every key's scope (in the caller's transaction).
+
+    An empty scope means "every agent", so a key whose only agent is deleted is revoked
+    instead: deleting an agent must never widen what a key can start."""
     keys = await session.scalars(select(ApiKey).where(ApiKey.agent_ids.contains([agent_id])))
     for key in keys:
         key.agent_ids = [a for a in key.agent_ids if a != agent_id]
+        if not key.agent_ids and key.revoked_at is None:
+            key.revoked_at = datetime.now(UTC)
+            audit(
+                session,
+                actor,
+                "api_key.revoked",
+                "api_key",
+                key.id,
+                name=key.name,
+                reason="its only agent was deleted",
+            )

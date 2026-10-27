@@ -157,8 +157,7 @@ async def create(
 ) -> AgentOut:
     values = _settings(data)
     await _check_providers(session, values)
-    if any(t.name == "http_webhook" and not t.url for t in data.tools):
-        raise AppError("The webhook tool needs a URL", code="webhook_url_required")
+    _check_tools(data.tools)
     row = Agent(id=uuid.uuid4(), template=template, created_by=actor.id, **values)
     session.add(row)
     await session.flush()
@@ -166,6 +165,11 @@ async def create(
     await session.commit()
     await session.refresh(row)
     return to_out(row, await _providers_for(session, [row]))
+
+
+def _check_tools(tools: list[ToolSpec]) -> None:
+    if any(t.name == "http_webhook" and not t.url for t in tools):
+        raise AppError("The webhook tool needs a URL", code="webhook_url_required")
 
 
 async def default_provider(session: AsyncSession, stage: str, language: str) -> uuid.UUID:
@@ -227,6 +231,8 @@ async def update(
     ):
         if required in changes and changes[required] is None:
             changes.pop(required)
+    if data.tools is not None:
+        _check_tools(data.tools)
     await _check_providers(session, changes)
     for field, value in changes.items():
         setattr(row, field, value)
@@ -249,7 +255,7 @@ async def delete(session: AsyncSession, agent_id: uuid.UUID, actor: Actor) -> No
     from voiceos.keys import service as keys
 
     row = await get(session, agent_id)
-    await keys.forget_agent(session, str(row.id))
+    await keys.forget_agent(session, str(row.id), actor)
     await session.delete(row)
     audit(session, actor, "agent.deleted", "agent", agent_id, name=row.name)
     await session.commit()
@@ -263,7 +269,8 @@ def templates() -> list[TemplateOut]:
 
 
 async def resolve(container: Container, agent_id: str) -> ResolvedAgent | None:
-    """The agent as the runtime needs it, or None when missing or disabled."""
+    """The agent as the runtime needs it, or None when missing, disabled, or relying on a
+    disabled provider."""
 
     async def load() -> ResolvedAgent | None:
         try:
@@ -275,12 +282,17 @@ async def resolve(container: Container, agent_id: str) -> ResolvedAgent | None:
             if a is None or not a.enabled:
                 return None
             by_id = await _providers_for(session, [a])
+        # A disabled provider receives nothing: an agent that needs one cannot take calls
+        # (the runtime refuses it), and a disabled small model just turns routing off.
+        stages = (a.stt_provider_id, a.llm_provider_id, a.tts_provider_id)
+        if any(not by_id[p].enabled for p in stages):
+            return None
         stt = await providers.resolve(container, by_id[a.stt_provider_id])
         llm = await providers.resolve(container, by_id[a.llm_provider_id])
         tts = await providers.resolve(container, by_id[a.tts_provider_id])
         small = (
             await providers.resolve(container, by_id[a.llm_small_provider_id])
-            if a.llm_small_provider_id
+            if a.llm_small_provider_id and by_id[a.llm_small_provider_id].enabled
             else None
         )
         if a.voice:
