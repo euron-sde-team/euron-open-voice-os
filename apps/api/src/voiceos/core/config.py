@@ -81,6 +81,7 @@ class Settings(_Base):
 
     default_rpm_limit: int = 120
     max_body_bytes: int = 2_000_000
+    max_internal_body_bytes: int = 32_000_000
     worker_poll_interval_s: float = 30.0
     worker_metrics_port: int = Field(9464, ge=0, le=65535)
     otel_enabled: bool = False

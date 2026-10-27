@@ -21,6 +21,7 @@ from voiceos.audit.service import Actor, audit
 from voiceos.core.container import Container
 from voiceos.core.contract import Price, ProviderConfig
 from voiceos.core.errors import AppError, ConflictError, NotFoundError
+from voiceos.core.net import host_of, is_private_host
 from voiceos.providers.models import Provider
 from voiceos.providers.schemas import (
     CLOUD_ADAPTERS,
@@ -28,8 +29,6 @@ from voiceos.providers.schemas import (
     ProviderOut,
     ProviderTest,
     ProviderUpdate,
-    host_of,
-    is_private_host,
 )
 
 

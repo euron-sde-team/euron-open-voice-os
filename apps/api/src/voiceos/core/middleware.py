@@ -88,6 +88,10 @@ class BodySizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
         limit = self.settings.max_body_bytes
+        if scope.get("path", "").startswith("/internal/"):
+            # A long session's report (every turn) can outgrow the dashboard's limit; only
+            # the runtime, holding the internal token, reaches these paths.
+            limit = self.settings.max_internal_body_bytes
         length = dict(scope.get("headers") or []).get(b"content-length", b"")
         if length.isdigit() and int(length) > limit:
             await self._refuse(send, limit)

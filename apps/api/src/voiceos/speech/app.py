@@ -53,6 +53,9 @@ class SpeechRequest(BaseModel):
 
 
 _WAV_FORMATS = "Send WAV audio: 16-bit or 32-bit PCM, or 32-bit float"
+MAX_UPLOAD_BYTES = 25_000_000
+# A header claiming an absurd rate would make resampling build an enormous filter.
+MIN_RATE, MAX_RATE = 8_000, 96_000
 
 # Whisper often writes Hindi in Urdu script and Marathi in Latin letters, even with the
 # language set. A short prompt in the right script steers it back to Devanagari (measured on
@@ -76,6 +79,8 @@ def decode_wav(data: bytes, max_s: float) -> np.ndarray:
         rate, raw = wavfile.read(io.BytesIO(data))
     except (ValueError, EOFError) as exc:
         raise SpeechError(_WAV_FORMATS) from exc
+    if not MIN_RATE <= rate <= MAX_RATE:
+        raise SpeechError(f"Sample rate {rate} Hz is not supported (8 to 96 kHz)")
     if raw.dtype == np.int16:
         pcm = raw.astype(np.float32) / 32768
     elif raw.dtype == np.int32:
@@ -193,7 +198,11 @@ def create_app(settings: SpeechSettings | None = None) -> FastAPI:
         response_format: Annotated[str, Form()] = "json",
     ) -> Response:
         size = whisper_size(model, settings.whisper_default)
-        audio = decode_wav(await file.read(), settings.speech_max_audio_s)
+        # Bounded read: a minute of 48 kHz stereo float is about 23 MB.
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise SpeechError("Audio file too large; send one utterance at a time")
+        audio = await asyncio.to_thread(decode_wav, data, settings.speech_max_audio_s)
         async with stt_slots:
             result = await asyncio.to_thread(
                 models.transcribe,

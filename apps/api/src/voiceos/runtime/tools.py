@@ -19,6 +19,7 @@ from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import FunctionCallParams
 
 from voiceos.core.contract import ResolvedAgent, ToolSpec
+from voiceos.core.net import resolves_safely
 
 # \w misses Indic vowel signs (matras), which would cut Hindi words into fragments, so
 # the Indic blocks (Devanagari to Sinhala, less the danda punctuation) count as word characters.
@@ -142,6 +143,9 @@ def _tool(spec: ToolSpec, agent: ResolvedAgent, on_end: Callable[[], None]) -> F
     url = spec.url or ""
 
     async def webhook(params: FunctionCallParams) -> None:
+        if not await resolves_safely(url):
+            await params.result_callback({"error": "webhook address refused"})
+            return
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(url, json={"agent": agent.agent_id, **params.arguments})

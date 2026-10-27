@@ -1,8 +1,11 @@
 """PII redaction applied to transcripts before they are stored.
 
 Removes what a caller commonly says out loud that should not sit in a log: email
-addresses, phone numbers, payment card numbers (Luhn-checked, so order numbers survive),
-Indian Aadhaar numbers (Verhoeff-checked) and PAN. Each match becomes a typed placeholder
+addresses (written or spoken: "name at gmail dot com"), phone numbers, payment card
+numbers, Indian Aadhaar numbers (Verhoeff-checked) and PAN. A 14 to 19 digit run that
+fails the card checksum is still removed (as ``[number]``): speech recognition mishears
+digits, and a card number with one digit wrong is still a card number. Shorter order and
+booking numbers survive. Each match becomes a typed placeholder
 such as ``[phone]`` so a transcript still reads naturally.
 
 Speech recognition writes numbers in many shapes ("98765 43210", "9 8 7 6..."); the
@@ -14,7 +17,11 @@ from __future__ import annotations
 import re
 
 _EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b")
-_PAN = re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b")
+# Speech recognition writes addresses as spoken: "priya at gmail dot com".
+_SPOKEN_EMAIL = re.compile(r"\b[\w.+-]+\s+at\s+[\w-]+(?:\s+dot\s+[a-z]{2,})+\b", re.IGNORECASE)
+# PAN in any case when written together; spaced ("ABCDE 1234 F") only in capitals, so
+# ordinary words around a number ("table 2024 a") are left alone.
+_PAN = re.compile(r"\b(?:[A-Za-z]{5}[0-9]{4}[A-Za-z]|[A-Z]{5} [0-9]{4} [A-Z])\b")
 # 12 digits in groups of four (Aadhaar), 13 to 19 digits (cards), then phone shapes.
 _DIGITS = re.compile(r"(?<![\w])(?:\+?\d[\d\s-]{7,22}\d)(?![\w])")
 
@@ -68,6 +75,9 @@ def _classify(digits: str) -> str | None:
         return "[card]"
     if 10 <= n <= 13:
         return "[phone]"
+    if 14 <= n <= 19:
+        # A card number with a digit misheard fails Luhn but is still a card number.
+        return "[number]"
     return None
 
 
@@ -75,6 +85,7 @@ def redact(text: str | None) -> str | None:
     if not text:
         return text
     out = _EMAIL.sub("[email]", text)
+    out = _SPOKEN_EMAIL.sub("[email]", out)
     out = _PAN.sub("[pan]", out)
 
     def digits(m: re.Match[str]) -> str:

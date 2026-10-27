@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import ipaddress
 import uuid
 from datetime import datetime
 from typing import Literal
-from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 
 from voiceos.core.contract import Price
+from voiceos.core.net import check_url
 from voiceos.core.schemas import ApiModel
 
 Stage = Literal["stt", "llm", "tts"]
@@ -24,46 +23,10 @@ ADAPTERS: dict[str, set[str]] = {
 # These always send audio or text to the vendor's cloud.
 CLOUD_ADAPTERS = {"deepgram", "sarvam", "anthropic", "elevenlabs", "cartesia"}
 NEEDS_URL = {"openai_compatible", "mock"}
-_METADATA_HOSTS = {"metadata", "metadata.google.internal", "instance-data"}
-_AWS_METADATA_V6 = ipaddress.ip_address("fd00:ec2::254")
-
-
-def host_of(url: str) -> str:
-    return (urlsplit(url).hostname or "").lower()
-
-
-def is_private_host(host: str) -> bool:
-    """Loopback, private ranges and single-label names (Compose service names) stay inside."""
-    if not host:
-        return False
-    try:
-        ip = ipaddress.ip_address(host.strip("[]"))
-    except ValueError:
-        return "." not in host or host.endswith((".local", ".internal", ".svc", ".cluster.local"))
-    return ip.is_private or ip.is_loopback
 
 
 def _check_url(v: str | None) -> str | None:
-    if v is None:
-        return None
-    v = v.strip().rstrip("/")
-    if not v.startswith(("http://", "https://")):
-        raise ValueError("base_url must start with http:// or https://")
-    host = host_of(v)
-    if not host:
-        raise ValueError("base_url needs a host")
-    try:
-        ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None = ipaddress.ip_address(
-            host.strip("[]")
-        )
-    except ValueError:
-        ip = None  # a host name
-    if ip is not None and (ip.is_link_local or ip.is_unspecified or ip == _AWS_METADATA_V6):
-        # Instance metadata holds the task's own credentials: never a provider target.
-        raise ValueError("base_url must not point at a link-local or metadata address")
-    if host in _METADATA_HOSTS:
-        raise ValueError("base_url must not point at an instance metadata host")
-    return v
+    return None if v is None else check_url(v, "base_url")
 
 
 class ProviderIn(ApiModel):
