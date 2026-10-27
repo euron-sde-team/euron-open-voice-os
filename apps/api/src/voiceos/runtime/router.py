@@ -3,9 +3,12 @@
 Sits between the user aggregator and the LLM. For each finished user turn it:
 
 1. **Response cache** (agent opt-in, agents without tools only): an exact repeat of a
-   normalized question replays the stored answer as if the LLM had produced it, so no LLM
-   call is made and no tokens are billed. Answers are stored only from turns the user did
-   not interrupt.
+   normalized conversation replays the stored answer as if the LLM had produced it, so no
+   LLM call is made and no tokens are billed. The key is the whole conversation so far,
+   not the last question: an answer may draw on anything said before ("can you confirm my
+   details?"), so it is only ever replayed to a caller who said exactly the same things,
+   typically the same first question after the greeting. Answers are stored only from
+   turns the user did not interrupt.
 2. **Routing**: with a small model configured, short turns (at most
    ``small_model_max_words`` words) go to it and everything else to the main model.
 
@@ -52,8 +55,8 @@ class ResponseCache:
         self._lock = threading.Lock()
 
     @staticmethod
-    def key(agent: ResolvedAgent, question: str) -> str:
-        raw = f"{agent.agent_id}:{agent.version}:{normalize(question)}"
+    def key(agent: ResolvedAgent, conversation: str) -> str:
+        raw = f"{agent.agent_id}:{agent.version}:{normalize(conversation)}"
         return hashlib.sha256(raw.encode()).hexdigest()
 
     def get(self, key: str) -> str | None:
@@ -71,6 +74,24 @@ class ResponseCache:
             self._data.move_to_end(key)
             while len(self._data) > self._max:
                 self._data.popitem(last=False)
+
+
+def _text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(p.get("text", "") for p in content if isinstance(p, dict))
+    return ""
+
+
+def conversation_text(frame: LLMContextFrame) -> str:
+    """Every user and assistant message so far, in order (the cache key's content)."""
+    parts = [
+        f"{m.get('role')}: {_text(m.get('content'))}"
+        for m in frame.context.get_messages()
+        if isinstance(m, dict) and m.get("role") in ("user", "assistant")
+    ]
+    return "\n".join(parts)
 
 
 def last_user_text(frame: LLMContextFrame) -> str:
@@ -111,7 +132,7 @@ class TurnRouter(FrameProcessor):
             return
         question = last_user_text(frame)
         if self._cache is not None and question.strip():
-            key = ResponseCache.key(self._agent, question)
+            key = ResponseCache.key(self._agent, conversation_text(frame))
             answer = self._cache.get(key)
             if answer is not None:
                 self.cache_hits += 1
