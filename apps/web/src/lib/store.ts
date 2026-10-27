@@ -25,7 +25,7 @@ interface UiPrefs {
 export const useUiPrefs = create<UiPrefs>()(
   persist(
     (set) => ({
-      days: 30,
+      days: 7,
       sidebarCollapsed: false,
       setDays: (days) => set({ days }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

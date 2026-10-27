@@ -248,7 +248,7 @@ function ProviderRow({ p, canWrite, onEdit, onDelete }: { p: Provider; canWrite:
   const price = priceText(p.stage, p.price);
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5" data-testid="provider-row">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{p.name}</span>
           {p.external ? (
@@ -267,7 +267,7 @@ function ProviderRow({ p, canWrite, onEdit, onDelete }: { p: Provider; canWrite:
           {p.base_url && <> &middot; <span className="font-mono">{p.base_url}</span></>}
         </div>
       </div>
-      <div className="text-right text-[12px] text-muted-foreground">
+      <div className="text-[12px] text-muted-foreground sm:text-right">
         <div>{p.self_hosted ? "No per-call price" : price ?? "No price set"}</div>
         <div>{p.used_by ? `Used by ${p.used_by} agent${p.used_by === 1 ? "" : "s"}` : "Not used yet"}</div>
       </div>

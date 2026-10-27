@@ -25,7 +25,7 @@ export function KeysScreen() {
   return (
     <>
       <PageHeader
-        title="API keys"
+        title="SDK keys"
         description="Server-side keys that start voice sessions through POST /v1/sessions. Stored as a peppered hash; the full key is shown once at creation."
         actions={
           canWrite && (

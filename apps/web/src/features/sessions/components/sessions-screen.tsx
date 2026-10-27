@@ -266,7 +266,7 @@ export function SessionsScreen() {
                     <TableCell className="whitespace-nowrap text-muted-foreground" title={formatDateTime(s.started_at)}>{formatRelative(s.started_at)}</TableCell>
                     <TableCell>
                       <div className="font-medium">{s.agent_name}</div>
-                      {s.external_providers.length > 0 && <div className="text-[11.5px] text-warning">via {s.external_providers.join(", ")}</div>}
+                      {s.external_providers.length > 0 && <div className="max-w-48 truncate text-[11.5px] text-warning" title={s.external_providers.join(", ")}>via {s.external_providers.join(", ")}</div>}
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground tabular md:table-cell">{duration(s.duration_s)}</TableCell>
                     <TableCell className="hidden tabular sm:table-cell">
