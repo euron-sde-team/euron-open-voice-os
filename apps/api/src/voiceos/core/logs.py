@@ -47,3 +47,30 @@ def configure_logging(level: str = "INFO") -> None:
     root.setLevel(level.upper())
     for noisy in ("uvicorn.access", "botocore", "urllib3", "httpx"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    _route_loguru()
+
+
+# Pipecat logs through loguru, at DEBUG by default: the whole LLM context every turn and
+# every sentence it speaks. Those are the caller's words, which retention, redaction and
+# erasure govern, so they must never reach a log. Loguru is sent through the JSON logger
+# with a WARNING floor (no conversation text is logged below it), and its messages are
+# redacted as a second line of defence.
+PIPECAT_LOG_FLOOR = logging.WARNING
+
+
+def _route_loguru() -> None:
+    try:
+        from loguru import logger as loguru_logger
+    except ImportError:  # the control plane image does not install Pipecat
+        return
+    from voiceos.privacy.redact import redact
+
+    target = logging.getLogger("pipecat")
+
+    def sink(message: object) -> None:
+        record = message.record  # type: ignore[attr-defined]
+        text = redact(str(record["message"])) or ""
+        target.log(record["level"].no, text)
+
+    loguru_logger.remove()
+    loguru_logger.add(sink, level=PIPECAT_LOG_FLOOR, format="{message}")
