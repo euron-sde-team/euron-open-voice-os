@@ -113,6 +113,7 @@ Read by the CLI and the server entry point directly:
 | `SPEECH_MAX_CHARS` | `4000` | Longest text accepted for synthesis |
 | `SPEECH_API_KEY` | empty | When set, every request except health checks must send it as a Bearer token |
 | `WHISPER_DOWNLOAD` | `tiny,base,small` | Sizes `voiceos models` downloads |
+| `KOKORO_MIRROR` | empty | Comma separated base URLs holding the Kokoro files, tried before the public hosts (files are checked against pinned SHA-256 digests) |
 
 Model names on the endpoints: `whisper-<size>` for transcription, with the sizes
 `tiny`, `base` and `small` downloaded by default (`medium`, `large-v3` and
@@ -143,6 +144,7 @@ overrides:
 | `VOS_LOG_LEVEL` | Log level for every service |
 | `VOS_REDIS_URL` | Set empty to run the stack without Redis |
 | `VOS_WHISPER_DOWNLOAD`, `VOS_WHISPER_PRELOAD` | Whisper sizes to download and to preload |
+| `VOS_KOKORO_MIRROR` | `KOKORO_MIRROR` for the one-shot `models` download |
 | `VOS_SPEECH_CONCURRENCY` | `SPEECH_CONCURRENCY` for the speech container |
 | `VOS_MAX_SESSIONS` | `MAX_SESSIONS` for the runtime |
 | `VOS_WEB_PORT` (4510), `VOS_API_PORT` (4530), `VOS_RUNTIME_PORT` (4535), `VOS_SPEECH_PORT` (4537), `VOS_MOCK_PORT` (4550), `VOS_PG_PORT` (4542), `VOS_REDIS_PORT` (4579), `VOS_TURN_PORT` (4578), `VOS_FLOCI_PORT` (4566) | Host ports, all bound to 127.0.0.1. The TURN relay range is fixed at 4581 to 4589 |

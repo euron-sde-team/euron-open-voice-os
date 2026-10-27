@@ -83,6 +83,8 @@ services:
       target: speech
     image: voiceos-speech:local
     command: ["models", "--dir", "/models", "--whisper", "${VOS_WHISPER_DOWNLOAD:-tiny,base,small}"]
+    environment:
+      KOKORO_MIRROR: ${VOS_KOKORO_MIRROR:-}
     volumes:
       - models:/models
     healthcheck:
@@ -291,4 +293,8 @@ services:
 volumes:
   pgdata:
   objects:
+  # Created by `make up` and kept by `make down` (only `make clean` deletes it), so the
+  # roughly 1 GB of speech models is downloaded once, not on every restart.
   models:
+    name: voiceos-models
+    external: true

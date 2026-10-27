@@ -63,6 +63,9 @@ dashboard.
   api, runtime, speech, worker and web, ALB, CloudWatch) and a coturn TURN relay on EC2
   behind a network load balancer, plus a local stack on Floci provisioned by the same
   modules.
+- Model downloads pinned by SHA-256 and fetched from ordered mirrors (plus your own with
+  `VOS_KOKORO_MIRROR`), with retries, a stall timeout and resume; the models volume
+  survives `make down`.
 
 ### Security
 

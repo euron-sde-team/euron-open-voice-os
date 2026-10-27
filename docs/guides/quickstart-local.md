@@ -109,7 +109,8 @@ The ticket is valid for one minute and one session. Connect a Pipecat client wit
 ## Stop
 
 ```bash
-make down    # stops the stack and deletes its volumes (models included)
+make down    # stops the stack and deletes its data (downloaded models are kept)
+make clean   # also deletes the downloaded models (about 1 GB)
 ```
 
 ## Next

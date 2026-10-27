@@ -349,7 +349,8 @@ curl -X POST http://localhost:4510/v1/sessions \
 ```
 
 [The quickstart guide](docs/guides/quickstart-local.md) walks through templates, providers
-and the SDK. `make down` removes everything.
+and the SDK. `make down` removes the stack and its data but keeps the downloaded models;
+`make clean` removes those too.
 
 ## 🧭 Explore the repository
 

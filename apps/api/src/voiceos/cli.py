@@ -48,7 +48,8 @@ def _worker(_: argparse.Namespace) -> None:
 def _models(args: argparse.Namespace) -> None:
     from voiceos.speech.download import main
 
-    main(["--dir", args.dir, "--whisper", args.whisper])
+    mirrors = [m for m in args.mirror.split(",") if m]
+    main(["--dir", args.dir, "--whisper", args.whisper, *(f"--mirror={m}" for m in mirrors)])
 
 
 def _migrate(_: argparse.Namespace) -> None:
@@ -154,6 +155,11 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("models", help="download the local speech models")
     p.add_argument("--dir", default=os.environ.get("SPEECH_MODELS_DIR", "./models"))
     p.add_argument("--whisper", default=os.environ.get("WHISPER_DOWNLOAD", "tiny,base,small"))
+    p.add_argument(
+        "--mirror",
+        default=os.environ.get("KOKORO_MIRROR", ""),
+        help="comma separated base URLs holding the Kokoro files, tried first",
+    )
     p.set_defaults(fn=_models)
     p = sub.add_parser("seed-demo", help="demo providers, agents and real recorded conversations")
     p.add_argument("--conversations", type=int, default=12)

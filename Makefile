@@ -28,7 +28,12 @@ help: ## Show this help
 env: ## Generate deploy/compose/.env with random local-only secrets
 	@scripts/gen-local-env.sh
 
+# Downloaded speech models live outside the stack's volumes, so `make down` keeps them and
+# the next `make up` does not fetch about 1 GB again. `make clean` removes them.
+MODELS_VOLUME := voiceos-models
+
 up: env ## Start everything on emulated AWS (Floci), provisioned by the same Terraform as production
+	@docker volume create $(MODELS_VOLUME) >/dev/null
 	$(FLOCI) up -d --build --wait
 	@echo ""
 	@echo "  dashboard  http://localhost:$${VOS_WEB_PORT:-4510}"
@@ -40,13 +45,14 @@ up: env ## Start everything on emulated AWS (Floci), provisioned by the same Ter
 
 up-aws: env ## Start the stack against real AWS resources (needs deploy/compose/.env.aws)
 	@test -f $(COMPOSE_DIR)/.env.aws || { echo "copy $(COMPOSE_DIR)/.env.aws.example to .env.aws first"; exit 1; }
+	@docker volume create $(MODELS_VOLUME) >/dev/null
 	$(AWS_LOCAL) up -d --build --wait
 
 demo: ## Seed the demo install: real conversations through the runtime, then a month of history
 	$(FLOCI) run --rm -T worker seed-demo
 	@echo "  Sign in at http://localhost:$${VOS_WEB_PORT:-4510} as admin@voiceos.local with password $(DEMO_PW)"
 
-down: ## Stop the stack and delete its volumes
+down: ## Stop the stack and delete its data (downloaded models are kept; make clean removes them)
 	-$(FLOCI) down -v --remove-orphans
 	-$(AWS_LOCAL) down -v --remove-orphans 2>/dev/null
 
@@ -145,5 +151,6 @@ aws-admin: ## Create the first owner as a one-off ECS task (ENV=... EMAIL=...; V
 aws-plan: ## terraform plan for ENV (aws-dev | aws-prod); needs terraform.tfvars and AWS credentials
 	cd infra/terraform/envs/$(ENV) && terraform init -input=false && terraform plan
 
-clean: ## Remove build output and caches
+clean: ## Remove build output, caches and the downloaded speech models
 	rm -rf apps/web/.next apps/api/.pytest_cache apps/api/.mypy_cache apps/api/.ruff_cache apps/api/.coverage e2e/test-results e2e/playwright-report
+	-@docker volume rm $(MODELS_VOLUME) >/dev/null 2>&1

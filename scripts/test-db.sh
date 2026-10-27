@@ -12,5 +12,6 @@ if ready "$PG_PORT" && ready "$REDIS_PORT"; then
   exit 0
 fi
 "$ROOT/scripts/gen-local-env.sh" >/dev/null
+docker volume create voiceos-models >/dev/null  # compose resolves the external volume
 docker compose --env-file "$ROOT/deploy/compose/.env" -f "$ROOT/deploy/compose/compose.yaml" \
   up -d --wait postgres redis
