@@ -150,7 +150,7 @@ on your own machine, the first agent works before anyone signs up for anything.
 | **Cost optimizer** | Phrase cache for repeated speech, response cache for repeated conversations (the whole conversation, never just the last question), small-model routing for short turns |
 | **SDK** | SDK keys scoped to agents and website origins; one-minute single-use session tickets |
 | **Infrastructure** | 10 Terraform modules, 3 environments; the full AWS stack (342 resources) applied end to end against Floci |
-| **Tests** | 151 unit (109 API, 42 web), 89 integration through the real runtime, 17 browser end-to-end with a fake microphone, a browser QA sweep |
+| **Tests** | 159 unit (117 API, 42 web), 89 integration through the real runtime, 17 browser end-to-end with a fake microphone, a browser QA sweep |
 | **License** | MIT |
 
 ## 🖼️ Screenshots
@@ -447,7 +447,7 @@ Report vulnerabilities privately: see [SECURITY.md](SECURITY.md). Details:
 
 | Suite | What it proves | Run |
 | --- | --- | --- |
-| Unit (109 API, 42 web) | Cost and not-reported, redaction checksums, session tokens, provider classification, response cache, FAQ lookup in English and Hindi, the turn recorder under every frame order, the speech service and its WAV handling, WER scoring, the CLI, config guards, sealing and caches; dashboard logic and components | `make test` |
+| Unit (117 API, 42 web) | Cost and not-reported, redaction checksums, session tokens, provider classification, response cache, FAQ lookup in English and Hindi, the turn recorder under every frame order, the speech service and its WAV handling, model downloads (mirrors, resume, slow hosts), WER scoring, the CLI, config guards, sealing and caches; dashboard logic and components | `make test` |
 | Integration (89) | The real control plane and runtime over HTTP with mock providers and the committed speech files: a spoken answer with every stage timed and costed, barge-in, a pause mid-sentence, provider switching, disclosure, no stored audio, spoken fallbacks for failing and slow providers, a dropped caller, the session cap, isolation, caches and small-model routing, tools, benchmarks through the worker, TURN credentials, and every admin endpoint, role and failure path | `make test-integration` |
 | Option matrix | The integration suite under every cache, key and storage backend (Redis or none, local or KMS, disk or S3) | `make test-matrix` |
 | Browser (17) | A fake microphone talking to agents over WebRTC (through coturn) and WebSocket, the five-minute path from template to conversation, providers and disclosure, sessions and erasure, SDK keys from a backend, benchmarks, users and roles, sign in and out | `make e2e` |
