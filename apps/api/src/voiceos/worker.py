@@ -27,6 +27,7 @@ async def tick(container: Container) -> bool:
     """One pass. True when anything was done (so the loop runs again at once)."""
     async with container.db.sessionmaker() as session:
         purged = await sessions.purge_expired(session)
+        await sessions.purge_claims(session)
     if purged:
         log.info("transcripts purged", extra={"sessions": purged})
     from voiceos.benchmarks import service as benchmarks

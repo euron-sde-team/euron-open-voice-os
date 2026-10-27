@@ -95,3 +95,17 @@ class SessionTurn(Base):
     llm_routed_small: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     response_cache_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     error: Mapped[str | None] = mapped_column(String(300))
+
+
+class SessionClaim(Base):
+    """A session token that has been used, across every runtime replica.
+
+    Tokens live 60 seconds, so rows older than that only prove history; the worker deletes
+    them after an hour."""
+
+    __tablename__ = "session_claims"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    claimed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), index=True
+    )

@@ -26,8 +26,13 @@ class AgentNotFoundError(Exception):
     pass
 
 
+class TokenUsedError(Exception):
+    """Another connection (on any replica) already used this session token."""
+
+
 class ControlPlane(Protocol):
     async def agent(self, agent_id: str) -> ResolvedAgent: ...
+    async def claim(self, session_id: str, agent_id: str) -> ResolvedAgent: ...
     async def report(self, report: SessionReport) -> None: ...
     async def close(self) -> None: ...
 
@@ -55,6 +60,18 @@ class HttpControlPlane:
         agent = ResolvedAgent.model_validate(resp.json())
         self._cache[agent_id] = (time.monotonic() + self._ttl, agent)
         return agent
+
+    async def claim(self, session_id: str, agent_id: str) -> ResolvedAgent:
+        """Use the token once, cluster wide, and get the agent (never cached)."""
+        resp = await self._client.post(
+            f"/internal/claims/{session_id}", params={"agent_id": agent_id}
+        )
+        if resp.status_code == 409:
+            raise TokenUsedError(session_id)
+        if resp.status_code == 404:
+            raise AgentNotFoundError(agent_id)
+        resp.raise_for_status()
+        return ResolvedAgent.model_validate(resp.json())
 
     async def report(self, report: SessionReport) -> None:
         body = report.model_dump(mode="json")
@@ -86,12 +103,20 @@ class StaticAgents:
         data = json.loads(Path(path).read_text())
         self._agents = {a["agent_id"]: ResolvedAgent.model_validate(a) for a in data}
         self.reports: list[SessionReport] = []
+        self._claimed: set[str] = set()
 
     async def agent(self, agent_id: str) -> ResolvedAgent:
         try:
             return self._agents[agent_id]
         except KeyError:
             raise AgentNotFoundError(agent_id) from None
+
+    async def claim(self, session_id: str, agent_id: str) -> ResolvedAgent:
+        if session_id in self._claimed:
+            raise TokenUsedError(session_id)
+        agent = await self.agent(agent_id)
+        self._claimed.add(session_id)
+        return agent
 
     async def report(self, report: SessionReport) -> None:
         self.reports.append(report)

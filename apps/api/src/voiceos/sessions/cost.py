@@ -71,12 +71,27 @@ def session_cost(agent: ResolvedAgent | None, report: SessionReport) -> Cost:
     u = report.usage
     stt = stt_cost(agent.stt, u.stt_audio_seconds)
     llm = llm_cost(agent.llm, u.llm_input_tokens, u.llm_output_tokens, u.llm_usage_reported)
-    billed_chars = max(0, u.tts_characters - u.tts_characters_cached)
-    tts = tts_cost(agent.tts, billed_chars)
+    small_used = agent.llm_small is not None and (
+        u.llm_small_input_tokens or u.llm_small_output_tokens or u.llm_turns_routed_small
+    )
+    if agent.llm_small is not None and small_used:
+        small = llm_cost(
+            agent.llm_small,
+            u.llm_small_input_tokens,
+            u.llm_small_output_tokens,
+            u.llm_usage_reported,
+        )
+        # Not reported for either model means the LLM stage as a whole is not reported.
+        llm = None if llm is None or small is None else llm + small
+    # TTS usage is counted when text is synthesized; phrase-cache replays never reach the
+    # provider, so they are already outside it (and appear as savings instead).
+    tts = tts_cost(agent.tts, u.tts_characters)
     parts = [stt, llm, tts]
     known = [p for p in parts if p is not None]
     total = sum(known) if known else None
     hosted = [agent.stt.self_hosted, agent.llm.self_hosted, agent.tts.self_hosted]
+    if agent.llm_small is not None and small_used:
+        hosted.append(agent.llm_small.self_hosted)
     if all(hosted):
         status = "self_hosted"
     elif all(p is not None for p in parts):
@@ -90,7 +105,10 @@ def session_cost(agent: ResolvedAgent | None, report: SessionReport) -> Cost:
     saved_tts = tts_cost(agent.tts, u.tts_characters_cached)
     if saved_tts:
         savings += saved_tts
-    answered = len([t for t in report.turns if t.agent_text and not t.response_cache_hit])
+    # Turns the LLM answered: a greeting is spoken without it, so it does not count.
+    answered = len(
+        [t for t in report.turns if t.user_text and t.agent_text and not t.response_cache_hit]
+    )
     if llm and answered and u.response_cache_hits:
         savings += (llm // answered) * u.response_cache_hits
     return Cost(stt, llm, tts, total, status, savings)

@@ -12,6 +12,7 @@ fails. It always returns a ``SessionReport`` built from what was measured.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -115,6 +116,7 @@ async def run_session(
         stt = build_stt(agent.stt, agent.language)
         main_llm = build_llm(agent.llm, agent.system_prompt)
         small_llm = build_llm(agent.llm_small, agent.system_prompt) if agent.llm_small else None
+        recorder.small_processor = small_llm.name if small_llm else None
         tts = build_tts(
             agent.tts,
             resources,
@@ -126,45 +128,56 @@ async def run_session(
         log.warning("session rejected: provider setup failed", extra={"error": str(exc)[:200]})
         return _report(agent, session_id, transport_kind, started_at, "error", recorder, [str(exc)])
 
-    llm_stage: Any = LLMSwitcher(llms=[main_llm, small_llm]) if small_llm else main_llm
-    tools = build_tools(agent, on_end=lambda: end("agent_ended"))
-    context = LLMContext(tools=tools) if tools else LLMContext()
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
-        context,
-        user_params=LLMUserAggregatorParams(
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=agent.turn.vad_stop_secs)),
-            user_turn_strategies=_turn_strategies(agent),
-            user_turn_stop_timeout=agent.turn.transcript_wait_s,
-        ),
-    )
-    router = TurnRouter(
-        agent,
-        recorder,
-        shared.response_cache,
-        main_llm=main_llm if small_llm else None,
-        small_llm=small_llm,
-    )
-    pipeline = Pipeline(
-        [
-            transport.input(),
-            stt,
-            user_aggregator,
-            router,
-            llm_stage,
-            tts,
-            transport.output(),
-            assistant_aggregator,
-        ]
-    )
-    worker = PipelineWorker(
-        pipeline,
-        params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
-        idle_timeout_secs=agent.idle_timeout_s,
-        observers=[recorder, _AnswerStore(recorder, router)],
-        processor_unusable_policy=ProcessorUnusablePolicy.END,
-    )
-    runner = WorkerRunner(handle_sigint=False)
-    await runner.add_workers(worker)
+    try:
+        llm_stage: Any = LLMSwitcher(llms=[main_llm, small_llm]) if small_llm else main_llm
+        tools = build_tools(agent, on_end=lambda: end("agent_ended"))
+        context = LLMContext(tools=tools) if tools else LLMContext()
+        user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
+            context,
+            user_params=LLMUserAggregatorParams(
+                vad_analyzer=SileroVADAnalyzer(
+                    params=VADParams(stop_secs=agent.turn.vad_stop_secs)
+                ),
+                user_turn_strategies=_turn_strategies(agent),
+                user_turn_stop_timeout=agent.turn.transcript_wait_s,
+            ),
+        )
+        router = TurnRouter(
+            agent,
+            recorder,
+            shared.response_cache,
+            main_llm=main_llm if small_llm else None,
+            small_llm=small_llm,
+        )
+        pipeline = Pipeline(
+            [
+                transport.input(),
+                stt,
+                user_aggregator,
+                router,
+                llm_stage,
+                tts,
+                transport.output(),
+                assistant_aggregator,
+            ]
+        )
+        worker = PipelineWorker(
+            pipeline,
+            params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
+            idle_timeout_secs=agent.idle_timeout_s,
+            observers=[recorder, _AnswerStore(recorder, router)],
+            processor_unusable_policy=ProcessorUnusablePolicy.END,
+        )
+        runner = WorkerRunner(handle_sigint=False)
+        await runner.add_workers(worker)
+    except Exception as exc:
+        # Setup past the providers failed (VAD, aggregators, the worker): free what was
+        # opened and still report the session, so it never vanishes.
+        await resources.close()
+        log.exception("session setup failed", extra={"session_id": session_id})
+        return _report(
+            agent, session_id, transport_kind, started_at, "error", recorder, [type(exc).__name__]
+        )
 
     @transport.event_handler("on_client_connected")
     async def _connected(_transport: Any, _client: Any) -> None:
@@ -206,8 +219,11 @@ async def run_session(
         await runner.run()
         end("agent_ended" if recorder.turns() else "client_left")
     except asyncio.CancelledError:
+        # The runtime is shutting down (a deploy or scale-in): stop the pipeline and still
+        # report everything measured so far instead of losing the call.
         end("shutdown")
-        raise
+        with contextlib.suppress(Exception):
+            await runner.cancel()
     except Exception as exc:
         log.exception("session failed", extra={"session_id": session_id})
         recorder.errors.append(f"{type(exc).__name__}: {str(exc)[:200]}")

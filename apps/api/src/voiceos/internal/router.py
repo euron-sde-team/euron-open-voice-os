@@ -8,15 +8,17 @@ must never be reachable from a browser.
 from __future__ import annotations
 
 import hmac
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.exc import IntegrityError
 
 from voiceos.agents import service as agents
+from voiceos.core.container import Container
 from voiceos.core.contract import SessionReport
 from voiceos.core.deps import ContainerDep, SessionDep
-from voiceos.core.errors import AuthenticationError, NotFoundError
+from voiceos.core.errors import AuthenticationError, ConflictError, NotFoundError
 from voiceos.sessions import service as sessions
 
 
@@ -33,6 +35,27 @@ router = APIRouter(prefix="/internal", tags=["internal"], include_in_schema=Fals
 
 @router.get("/agents/{agent_id}")
 async def resolved_agent(agent_id: str, _: Internal, container: ContainerDep) -> dict[str, Any]:
+    return await _agent_body(container, agent_id)
+
+
+@router.post("/claims/{session_id}")
+async def claim_session(
+    session_id: uuid.UUID,
+    agent_id: str,
+    _: Internal,
+    session: SessionDep,
+    container: ContainerDep,
+) -> dict[str, Any]:
+    """Use a session token once, across every runtime replica, and get its agent.
+
+    The runtime calls this while admitting a connection; only the first call for a session
+    id wins, so a ticket replayed against another replica is refused."""
+    if not await sessions.claim(session, session_id):
+        raise ConflictError("This session token was already used", code="token_used")
+    return await _agent_body(container, agent_id)
+
+
+async def _agent_body(container: Container, agent_id: str) -> dict[str, Any]:
     agent = await agents.resolve(container, agent_id)
     if agent is None:
         raise NotFoundError("Agent not found or disabled")

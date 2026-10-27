@@ -108,7 +108,8 @@ async def ingest(session: AsyncSession, container: Container, report: SessionRep
     sid = uuid.UUID(report.session_id)
     if await session.get(VoiceSession, sid) is not None:
         return False
-    agent = await agents.resolve(container, report.agent_id)
+    # The configuration the call ran with; older runtimes did not send it.
+    agent = report.agent or await agents.resolve(container, report.agent_id)
     privacy = agent.privacy if agent else None
     keep_days = privacy.transcript_retention_days if privacy else 0
     scrub = privacy.redact_pii if privacy else True
@@ -155,7 +156,8 @@ async def ingest(session: AsyncSession, container: Container, report: SessionRep
         cost_total_nusd=cost.total,
         cost_status=cost.status,
         savings_nusd=cost.savings,
-        errors=[e[:300] for e in report.errors[:20]],
+        # Provider errors can echo what the caller said: redact them like the transcript.
+        errors=[redact(e[:300]) or "" for e in report.errors[:20]],
         transcript_stored=keep_days > 0,
         transcript_expires_at=report.ended_at + timedelta(days=keep_days) if keep_days else None,
     )
@@ -184,7 +186,7 @@ async def ingest(session: AsyncSession, container: Container, report: SessionRep
                 llm_model=t.llm_model,
                 llm_routed_small=t.llm_routed_small,
                 response_cache_hit=t.response_cache_hit,
-                error=(t.error or None) and t.error[:300],
+                error=(t.error or None) and redact(t.error[:300]),
             )
         )
     await session.flush()
@@ -358,6 +360,39 @@ async def erase_transcript(session: AsyncSession, session_id: uuid.UUID) -> None
     )
     row.transcript_stored = False
     row.transcript_expires_at = None
+
+
+async def claim(session: AsyncSession, session_id: uuid.UUID) -> bool:
+    """Mark a session token used; False if any runtime replica already used it.
+
+    One atomic insert in Postgres, so two replicas racing on the same token cannot both win.
+    """
+    from sqlalchemy.dialects.postgresql import insert
+
+    from voiceos.sessions.models import SessionClaim
+
+    result = await session.execute(
+        insert(SessionClaim)
+        .values(session_id=session_id)
+        .on_conflict_do_nothing(index_elements=["session_id"])
+        .returning(SessionClaim.session_id)
+    )
+    won = result.scalar_one_or_none() is not None
+    await session.commit()
+    return won
+
+
+async def purge_claims(session: AsyncSession, older_than: timedelta = timedelta(hours=1)) -> int:
+    """Forget used tokens long after they expired (tokens live 60 seconds)."""
+    from sqlalchemy import delete
+
+    from voiceos.sessions.models import SessionClaim
+
+    result = await session.execute(
+        delete(SessionClaim).where(SessionClaim.claimed_at < datetime.now(UTC) - older_than)
+    )
+    await session.commit()
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def purge_expired(session: AsyncSession, now: datetime | None = None) -> int:

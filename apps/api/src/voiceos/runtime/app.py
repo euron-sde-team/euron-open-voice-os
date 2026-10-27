@@ -51,6 +51,7 @@ from voiceos.runtime.control import (
     ControlPlane,
     HttpControlPlane,
     StaticAgents,
+    TokenUsedError,
 )
 from voiceos.runtime.pipeline import SessionShared, run_session
 
@@ -116,6 +117,16 @@ class Sessions:
         SESSIONS_ACTIVE.set(len(self.live))
 
 
+def _public(agent: ResolvedAgent) -> ResolvedAgent:
+    """The agent as reported back: every provider key removed."""
+    update: dict[str, Any] = {
+        stage: provider.model_copy(update={"api_key": None})
+        for stage in ("stt", "llm", "tts", "llm_small")
+        if (provider := getattr(agent, stage)) is not None
+    }
+    return agent.model_copy(update=update)
+
+
 def turn_credentials(secret: str, ttl_s: int = 3600, label: str = "voiceos") -> tuple[str, str]:
     """coturn ``use-auth-secret`` credentials: valid until ``ttl_s`` from now, per caller."""
     username = f"{int(time.time()) + ttl_s}:{label}"
@@ -169,9 +180,13 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
-        for live in list(sessions.live.values()):
-            if live.task:
-                live.task.cancel()
+        # Cancel live calls, then wait for their reports to reach the control plane
+        # before the client closes: each session still files what it measured.
+        tasks = [live.task for live in sessions.live.values() if live.task]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.wait(tasks, timeout=settings.report_timeout_s * 3 + 5)
         await webrtc.close()  # type: ignore[no-untyped-call]
         await control.close()
 
@@ -201,8 +216,12 @@ def create_app(
         )
 
     async def load_agent(claims: SessionClaims) -> ResolvedAgent:
+        """Claim the token cluster wide (single use across replicas) and load its agent."""
         try:
-            return await control.agent(claims.agent_id)
+            return await control.claim(claims.session_id, claims.agent_id)
+        except TokenUsedError:
+            sessions.release(claims.session_id)
+            raise RejectedError(409, "token_used", "This session token was already used") from None
         except AgentNotFoundError:
             sessions.release(claims.session_id)
             raise RejectedError(
@@ -226,7 +245,9 @@ def create_app(
                 session_id=claims.session_id,
                 shared=shared,
             )
-            report = report.model_copy(update={"subject": claims.subject, "origin": claims.origin})
+            report = report.model_copy(
+                update={"subject": claims.subject, "origin": claims.origin, "agent": _public(agent)}
+            )
         except asyncio.CancelledError:
             report = SessionReport(
                 session_id=claims.session_id,
@@ -239,6 +260,7 @@ def create_app(
                 external_providers=agent.external_providers(),
                 subject=claims.subject,
                 origin=claims.origin,
+                agent=_public(agent),
             )
         finally:
             sessions.release(claims.session_id)
@@ -327,17 +349,22 @@ def create_app(
         except RejectedError as exc:
             await deny(websocket, exc.status, exc.code, exc.message)
             return
-        await websocket.accept()
-        transport = FastAPIWebsocketTransport(
-            websocket,
-            FastAPIWebsocketParams(
-                audio_in_enabled=True,
-                audio_out_enabled=True,
-                add_wav_header=False,
-                serializer=ProtobufFrameSerializer(),
-                session_timeout=agent.max_duration_s,
-            ),
-        )
+        try:
+            await websocket.accept()
+            transport = FastAPIWebsocketTransport(
+                websocket,
+                FastAPIWebsocketParams(
+                    audio_in_enabled=True,
+                    audio_out_enabled=True,
+                    add_wav_header=False,
+                    serializer=ProtobufFrameSerializer(),
+                    session_timeout=agent.max_duration_s,
+                ),
+            )
+        except BaseException:
+            # The caller left during setup: free the slot, or the instance fills up for good.
+            sessions.release(claims.session_id)
+            raise
         task = asyncio.create_task(run(claims, agent, transport, "websocket"))
         sessions.live[claims.session_id].task = task
         await task

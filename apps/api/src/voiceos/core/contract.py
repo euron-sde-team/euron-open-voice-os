@@ -12,7 +12,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+
+from voiceos.core.net import check_url
 
 Stage = Literal["stt", "llm", "tts"]
 Transport = Literal["webrtc", "websocket"]
@@ -85,6 +87,12 @@ class ToolSpec(_Model):
     description: str | None = None
     url: str | None = None
 
+    @field_validator("url")
+    @classmethod
+    def _safe_url(cls, v: str | None) -> str | None:
+        # The runtime posts to it from inside the deployment: never at instance metadata.
+        return None if v is None else check_url(v, "webhook url")
+
 
 class ResolvedAgent(_Model):
     agent_id: str
@@ -138,6 +146,9 @@ class UsageReport(_Model):
     stt_audio_seconds: float = 0.0
     llm_input_tokens: int = 0
     llm_output_tokens: int = 0
+    # Tokens of the small model the router sends short turns to, priced at its own rate.
+    llm_small_input_tokens: int = 0
+    llm_small_output_tokens: int = 0
     tts_characters: int = 0
     tts_characters_cached: int = 0
     tts_cache_hits: int = 0
@@ -162,3 +173,6 @@ class SessionReport(_Model):
     usage: UsageReport = UsageReport()
     external_providers: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    # The configuration the call ran with (provider keys removed), so cost, retention and
+    # redaction follow it even if the agent is edited or disabled before the report lands.
+    agent: ResolvedAgent | None = None

@@ -112,6 +112,8 @@ class TurnRecorder(BaseObserver):
         self.usage = UsageReport()
         self.errors: list[str] = []
         self.interruptions = 0
+        # Name of the small-model processor, so its tokens are counted (and priced) apart.
+        self.small_processor: str | None = None
 
     # ── public ──────────────────────────────────────────────────────────────────────
     def start_greeting(self, text: str) -> None:
@@ -224,8 +226,12 @@ class TurnRecorder(BaseObserver):
     def _metrics(self, frame: MetricsFrame) -> None:
         for item in frame.data:
             if isinstance(item, LLMUsageMetricsData):
-                self.usage.llm_input_tokens += item.value.prompt_tokens
-                self.usage.llm_output_tokens += item.value.completion_tokens
+                if self.small_processor and item.processor == self.small_processor:
+                    self.usage.llm_small_input_tokens += item.value.prompt_tokens
+                    self.usage.llm_small_output_tokens += item.value.completion_tokens
+                else:
+                    self.usage.llm_input_tokens += item.value.prompt_tokens
+                    self.usage.llm_output_tokens += item.value.completion_tokens
                 self.usage.llm_usage_reported = True
                 if self._current is not None and item.model:
                     self._current.llm_model = item.model
