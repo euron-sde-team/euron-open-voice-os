@@ -12,7 +12,9 @@ for (const transport of ["WebRTC", "WebSocket"] as const) {
     const errors = watchConsole(page);
     await asOwner(page, "/talk");
     await expect(page.getByRole("heading", { name: "Talk" })).toBeVisible();
-    if (process.env.E2E_AGENT) await choose(page, "talk-agent", new RegExp(process.env.E2E_AGENT));
+    // The fake microphone speaks English: pick the seeded English agent explicitly, since
+    // the page defaults to the newest agent (on a fresh demo, the Hindi tutor).
+    await choose(page, "talk-agent", new RegExp(process.env.E2E_AGENT ?? "^Front desk"));
     await expect(page.getByTestId("disclosure")).toBeVisible();
     await page.getByRole("radio", { name: transport }).click();
 
