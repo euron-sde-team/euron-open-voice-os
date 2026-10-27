@@ -9,9 +9,12 @@ Nothing is downloaded at request time.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import sys
+import time
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 KOKORO_RELEASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1"
@@ -20,6 +23,24 @@ KOKORO_FILES = {
     "kokoro-v1.0.int8.onnx": "ae315a79b623f244700e4afb9246c46a26066782e049ba174bf3ba433970ee9c",
     "voices-v1.0.bin": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
 }
+# A first run pulls several hundred MB; one dropped connection should not fail `make up`.
+ATTEMPTS = 5
+
+
+def retrying(what: str, fn: Callable[[], object], *, delay_s: float = 2.0) -> None:
+    """Run a download, retrying network failures with exponential backoff."""
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            fn()
+            return
+        except OSError as exc:  # URLError and ContentTooShortError are OSErrors
+            if attempt == ATTEMPTS:
+                raise SystemExit(
+                    f"{what}: download failed after {ATTEMPTS} attempts ({exc})"
+                ) from exc
+            wait = delay_s * 2 ** (attempt - 1)
+            print(f"{what}: attempt {attempt} failed ({exc}); retrying in {wait:.0f}s")
+            time.sleep(wait)
 
 
 def sha256(path: Path) -> str:
@@ -39,7 +60,9 @@ def fetch_kokoro(target: Path) -> None:
             continue
         part = path.with_suffix(path.suffix + ".part")
         print(f"kokoro: downloading {name}")
-        urllib.request.urlretrieve(f"{KOKORO_RELEASE}/{name}", part)  # noqa: S310 fixed https URL
+        url = f"{KOKORO_RELEASE}/{name}"
+        fetch = functools.partial(urllib.request.urlretrieve, url, part)  # fixed https URL
+        retrying(f"kokoro: {name}", fetch)
         got = sha256(part)
         if got != digest:
             part.unlink(missing_ok=True)
@@ -52,7 +75,7 @@ def fetch_whisper(target: Path, sizes: list[str]) -> None:
 
     for size in sizes:
         print(f"whisper: {size}")
-        download_model(size, cache_dir=str(target))
+        retrying(f"whisper: {size}", functools.partial(download_model, size, cache_dir=str(target)))
 
 
 def main(argv: list[str] | None = None) -> None:
